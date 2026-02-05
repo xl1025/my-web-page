@@ -1,0 +1,3836 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>星空主题点名系统 - 手势增强版</title>
+    
+    <!-- 引入第三方库 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/file-saver@2.0.5/dist/FileSaver.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mammoth@1.6.0/mammoth.browser.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    
+    <!-- 手势识别库 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    
+    <style>
+        :root {
+            --primary-color: #6a8cff;
+            --secondary-color: #ff7eb9;
+            --accent-color: #7fffcb;
+            --light-color: #f8f9ff;
+            --dark-color: #0f1123;
+            --success-color: #51cf66;
+            --warning-color: #ffd43b;
+            --danger-color: #ff6b6b;
+            --card-color: rgba(106, 140, 255, 0.2);
+            --edit-color: #6a8cff;
+            --sphere-color: #87CEEB;
+            --name-card-bg: rgba(10, 25, 47, 0.7);
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background: #000000;
+            color: var(--light-color);
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        
+        #app {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            height: 100vh;
+        }
+        
+        .sidebar {
+            background: rgba(15, 17, 35, 0.85);
+            backdrop-filter: blur(15px);
+            border-right: 1px solid rgba(106, 140, 255, 0.3);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+            overflow-y: auto;
+            box-shadow: 0 0 30px rgba(106, 140, 255, 0.15);
+            transition: transform 0.3s ease;
+        }
+        
+        .sidebar.hidden {
+            transform: translateX(-100%);
+        }
+        
+        .main-content {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            height: 100vh;
+        }
+        
+        .header {
+            padding: 15px 20px;
+            background: rgba(15, 17, 35, 0.6);
+            backdrop-filter: blur(8px);
+            border-bottom: 1px solid rgba(106, 140, 255, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 5;
+        }
+        
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            height: calc(100vh - 60px);
+        }
+        
+        .loading-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 100;
+            background: rgba(15, 17, 35, 0.9);
+            padding: 30px 40px;
+            border-radius: 15px;
+            border: 1px solid var(--primary-color);
+            max-width: 90%;
+            width: 400px;
+            box-shadow: 0 0 40px rgba(106, 140, 255, 0.3);
+            transition: opacity 0.5s ease;
+            display: none;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            margin: 0 auto 20px;
+            border: 4px solid rgba(106, 140, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--primary-color);
+            animation: spin 1.2s ease-in-out infinite;
+        }
+        
+        .loading-progress {
+            height: 8px;
+            background: rgba(106, 140, 255, 0.2);
+            border-radius: 4px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        
+        .loading-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            width: 0%;
+            transition: width 0.4s ease;
+            border-radius: 4px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        h1 {
+            font-size: 1.6rem;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin-bottom: 15px;
+            font-weight: 600;
+            text-align: center;
+            text-shadow: 0 0 10px rgba(106, 140, 255, 0.6);
+        }
+        
+        h2 {
+            font-size: 1.1rem;
+            background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin: 15px 0 10px 0;
+            font-weight: 500;
+            border-bottom: 1px solid rgba(106, 140, 255, 0.2);
+            padding-bottom: 5px;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        select, button, input {
+            width: 100%;
+            padding: 10px 12px;
+            margin-bottom: 10px;
+            border: 1px solid rgba(106, 140, 255, 0.4);
+            border-radius: 6px;
+            background: rgba(15, 17, 35, 0.6);
+            color: white;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+        
+        select:focus, button:focus, input:focus {
+            outline: none;
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 2px rgba(106, 140, 255, 0.3);
+        }
+        
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236a8cff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 1em;
+        }
+        
+        button {
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.6), rgba(255, 126, 185, 0.6));
+            color: white;
+            border: 1px solid rgba(106, 140, 255, 0.4);
+            cursor: pointer;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        button:hover:not(:disabled) {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            box-shadow: 0 0 15px rgba(106, 140, 255, 0.4);
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        button i {
+            margin-right: 8px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.7), rgba(255, 126, 185, 0.7));
+        }
+        
+        .btn-primary:hover:not(:disabled) {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            box-shadow: 0 0 15px rgba(106, 140, 255, 0.5);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(90deg, rgba(255, 212, 59, 0.6), rgba(127, 255, 203, 0.6));
+            color: #000;
+        }
+        
+        .btn-secondary:hover:not(:disabled) {
+            background: linear-gradient(90deg, var(--warning-color), var(--accent-color));
+            box-shadow: 0 0 15px rgba(255, 212, 59, 0.4);
+        }
+        
+        .student-list {
+            flex: 1;
+            overflow-y: auto;
+            margin-bottom: 15px;
+            border: 1px solid rgba(106, 140, 255, 0.3);
+            border-radius: 6px;
+            background: rgba(15, 17, 35, 0.4);
+        }
+        
+        .student-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-bottom: 1px solid rgba(106, 140, 255, 0.1);
+            transition: all 0.2s ease;
+        }
+        
+        .student-item:last-child {
+            border-bottom: none;
+        }
+        
+        .student-item:hover {
+            background: rgba(106, 140, 255, 0.1);
+        }
+        
+        .student-item.selected {
+            background: rgba(106, 140, 255, 0.2);
+        }
+        
+        .student-item.called {
+            opacity: 0.7;
+        }
+        
+        .student-item.called::after {
+            content: "✓";
+            color: var(--success-color);
+            margin-left: 10px;
+        }
+        
+        .student-name {
+            flex: 1;
+            font-weight: 500;
+        }
+        
+        .student-score {
+            width: 40px;
+            text-align: center;
+            font-weight: bold;
+            color: var(--success-color);
+        }
+        
+        .student-score.negative {
+            color: var(--danger-color);
+        }
+        
+        .checkbox {
+            margin-right: 10px;
+            width: 16px;
+            height: 16px;
+            accent-color: var(--primary-color);
+        }
+        
+        .status-bar {
+            text-align: center;
+            font-weight: 600;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            margin: 10px 0;
+            height: 24px;
+            text-shadow: 0 0 5px rgba(106, 140, 255, 0.4);
+        }
+        
+        .result-card {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.8);
+            opacity: 0;
+            width: 90%;
+            max-width: 600px;
+            background: rgba(15, 17, 35, 0.9);
+            backdrop-filter: blur(15px);
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(106, 140, 255, 0.3);
+            border: 1px solid rgba(106, 140, 255, 0.4);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .result-card.show {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translate(-50%, -50%) scale(1);
+            box-shadow: 0 0 50px rgba(106, 140, 255, 0.4);
+        }
+        
+        .result-title {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-shadow: 0 0 10px rgba(106, 140, 255, 0.6);
+        }
+        
+        .result-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 15px;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        
+        .result-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            padding: 12px;
+            border: 1px solid rgba(106, 140, 255, 0.2);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .result-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(106, 140, 255, 0.3);
+        }
+        
+        .result-add-point {
+            background: linear-gradient(90deg, rgba(81, 207, 102, 0.7), rgba(127, 255, 203, 0.7));
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            margin-top: 8px;
+            display: inline-block;
+        }
+        
+        .result-add-point:hover {
+            background: linear-gradient(90deg, var(--success-color), var(--accent-color));
+            box-shadow: 0 0 10px rgba(81, 207, 102, 0.5);
+        }
+        
+        .result-name {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 5px;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        
+        .result-info {
+            font-size: 1rem;
+            color: var(--light-color);
+            margin-bottom: 3px;
+        }
+        
+        .result-score {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--success-color);
+            margin-bottom: 8px;
+        }
+        
+        .result-score.negative {
+            color: var(--danger-color);
+        }
+        
+        .result-actions {
+            display: flex;
+            gap: 5px;
+            margin-top: 8px;
+        }
+
+        .group-add-point-btn {
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.7), rgba(127, 255, 203, 0.7));
+            margin-top: 15px;
+            padding: 10px;
+            width: 80%;
+            font-weight: bold;
+        }
+        
+        .group-add-point-btn:hover {
+            background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+            box-shadow: 0 0 10px rgba(106, 140, 255, 0.5);
+        }
+        
+        .add-point-btn, .remove-point-btn, .remove-btn {
+            padding: 3px 8px;
+            font-size: 0.8rem;
+            width: auto;
+            margin: 0;
+            flex: 1;
+        }
+        
+        .add-point-btn {
+            background: linear-gradient(90deg, rgba(81, 207, 102, 0.7), rgba(127, 255, 203, 0.7));
+        }
+        
+        .add-point-btn:hover {
+            background: linear-gradient(90deg, var(--success-color), var(--accent-color));
+            box-shadow: 0 0 10px rgba(81, 207, 102, 0.5);
+        }
+        
+        .remove-point-btn {
+            background: linear-gradient(90deg, rgba(255, 107, 107, 0.7), rgba(255, 212, 59, 0.7));
+        }
+        
+        .remove-point-btn:hover {
+            background: linear-gradient(90deg, var(--danger-color), var(--warning-color));
+            box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+        }
+        
+        .remove-btn {
+            background: linear-gradient(90deg, rgba(255, 107, 107, 0.7), rgba(255, 126, 185, 0.7));
+        }
+        
+        .remove-btn:hover {
+            background: linear-gradient(90deg, var(--danger-color), var(--secondary-color));
+            box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+        }
+        
+        .close-result {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(106, 140, 255, 0.3);
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            font-size: 1rem;
+            cursor: pointer;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+        }
+        
+        .close-result:hover {
+            background: rgba(106, 140, 255, 0.1);
+            transform: rotate(90deg);
+        }
+        
+        .action-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .score-control-buttons {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 50px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            color: #000;
+            margin-left: 6px;
+        }
+        
+        .dropdown {
+            position: relative;
+            display: inline-block;
+            width: 100%;
+        }
+        
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background-color: rgba(15, 17, 35, 0.95);
+            min-width: 100%;
+            box-shadow: 0px 8px 16px 0px rgba(106, 140, 255, 0.2);
+            z-index: 100;
+            border-radius: 6px;
+            border: 1px solid rgba(106, 140, 255, 0.4);
+            margin-top: 5px;
+        }
+        
+        .dropdown-content.show {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .dropdown-content a {
+            color: white;
+            padding: 10px 14px;
+            text-decoration: none;
+            display: block;
+            transition: all 0.2s ease;
+        }
+        
+        .dropdown-content a:hover {
+            background-color: rgba(106, 140, 255, 0.1);
+        }
+        
+        .dropdown-content a.selected {
+            background-color: rgba(106, 140, 255, 0.2);
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.2), rgba(255, 126, 185, 0.2));
+            color: var(--primary-color);
+        }
+        
+        .dropdown-btn {
+            width: 100%;
+            text-align: center;
+        }
+        
+        .voice-control {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .voice-toggle {
+            width: 40px;
+            height: 24px;
+            background: rgba(106, 140, 255, 0.1);
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+            margin-right: 8px;
+            border: 1px solid var(--primary-color);
+            transition: all 0.3s ease;
+        }
+        
+        .voice-toggle.active {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        }
+        
+        .voice-toggle::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: white;
+            border-radius: 50%;
+            top: 1px;
+            left: 1px;
+            transition: all 0.3s ease;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+        }
+        
+        .voice-toggle.active::after {
+            left: calc(100% - 21px);
+            background: #000;
+        }
+        
+        .voice-label {
+            font-size: 0.85rem;
+            color: var(--light-color);
+        }
+        
+        .file-input-container {
+            position: relative;
+            margin-bottom: 10px;
+        }
+        
+        .file-input-label {
+            display: block;
+            padding: 10px 12px;
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.6), rgba(255, 126, 185, 0.6));
+            color: white;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            border: 1px solid rgba(106, 140, 255, 0.4);
+            transition: all 0.3s ease;
+        }
+        
+        .file-input-label:hover {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            box-shadow: 0 0 15px rgba(106, 140, 255, 0.4);
+        }
+        
+        .file-input {
+            position: absolute;
+            width: 0.1px;
+            height: 0.1px;
+            opacity: 0;
+            overflow: hidden;
+            z-index: -1;
+        }
+        
+        .file-name {
+            font-size: 0.85rem;
+            margin-top: 3px;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-align: center;
+        }
+        
+        .music-control {
+            display: flex;
+            align-items: center;
+            margin-top: 8px;
+            gap: 8px;
+        }
+        
+        .music-btn {
+            flex: 1;
+            padding: 6px;
+            margin: 0;
+        }
+        
+        .music-info {
+            font-size: 0.8rem;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-align: center;
+            margin-top: 3px;
+        }
+        
+        .fullscreen-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.3), rgba(255, 126, 185, 0.3));
+            color: white;
+            border: 1px solid rgba(106, 140, 255, 0.6);
+            font-size: 1.1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+        
+        .fullscreen-btn:hover {
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.5), rgba(255, 126, 185, 0.5));
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(106, 140, 255, 0.6);
+        }
+
+        .toggle-sidebar-btn {
+            position: absolute;
+            bottom: 75px;
+            right: 20px;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.3), rgba(255, 126, 185, 0.3));
+            color: white;
+            border: 1px solid rgba(106, 140, 255, 0.6);
+            font-size: 1.1rem;
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: all 0.3s ease;
+        }
+        
+        .fullscreen-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            z-index: 10;
+            display: none;
+            border: 1px solid rgba(106, 140, 255, 0.3);
+        }
+
+        .toggle-sidebar-btn:hover {
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.5), rgba(255, 126, 185, 0.5));
+            transform: scale(1.1);
+            box-shadow: 0 0 20px rgba(106, 140, 255, 0.6);
+        }
+        
+        .toggle-sidebar-btn.visible {
+            display: flex;
+        }
+      
+        .fullscreen-indicator.show {
+            display: block;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(106, 140, 255, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(106, 140, 255, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(106, 140, 255, 0); }
+        }
+        
+        .tech-glow {
+            position: absolute;
+            pointer-events: none;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(106, 140, 255, 0.2) 0%, rgba(106, 140, 255, 0) 70%);
+            z-index: 0;
+        }
+        
+        .file-help {
+            font-size: 0.8rem;
+            color: rgba(255, 255, 255, 0.6);
+            margin-top: 5px;
+            text-align: center;
+            line-height: 1.4;
+        }
+        
+        .edit-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(15, 17, 35, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        
+        .edit-modal.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .edit-content {
+            background: rgba(15, 17, 35, 0.95);
+            border: 1px solid var(--primary-color);
+            border-radius: 10px;
+            padding: 25px;
+            width: 90%;
+            max-width: 400px;
+            transform: translateY(20px);
+            transition: transform 0.3s ease;
+            box-shadow: 0 0 30px rgba(106, 140, 255, 0.3);
+        }
+        
+        .edit-modal.show .edit-content {
+            transform: translateY(0);
+        }
+        
+        .edit-title {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .edit-form-group {
+            margin-bottom: 15px;
+        }
+        
+        .edit-label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+            color: var(--light-color);
+        }
+        
+        .edit-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid rgba(106, 140, 255, 0.5);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+            font-size: 1rem;
+        }
+        
+        .edit-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 25px;
+            justify-content: center;
+        }
+        
+        .edit-save, .edit-cancel {
+            flex: 1;
+            padding: 10px;
+            font-size: 1rem;
+            max-width: 120px;
+        }
+        
+        .edit-save {
+            background: linear-gradient(90deg, var(--success-color), var(--accent-color));
+        }
+        
+        .edit-save:hover {
+            background: linear-gradient(90deg, #41b755, #68e6b3);
+            box-shadow: 0 0 15px rgba(81, 207, 102, 0.4);
+        }
+        
+        .edit-cancel {
+            background: linear-gradient(90deg, var(--danger-color), var(--secondary-color));
+        }
+        
+        .edit-cancel:hover {
+            background: linear-gradient(90deg, #ff5252, #ff6db2);
+            box-shadow: 0 0 15px rgba(255, 107, 107, 0.4);
+        }
+        
+        .call-status {
+            font-size: 0.85rem;
+            background: linear-gradient(90deg, var(--primary-color), var(--accent-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        
+        .three-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        
+        .particles-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .performance-mode {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            z-index: 10;
+            background: rgba(15, 17, 35, 0.7);
+            border: 1px solid rgba(106, 140, 255, 0.3);
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 0.8rem;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .performance-mode:hover {
+            background: rgba(106, 140, 255, 0.2);
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        
+        /* 手势控制样式 */
+        .gesture-control {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(15, 17, 35, 0.5);
+            border-radius: 6px;
+            border: 1px solid rgba(106, 140, 255, 0.3);
+        }
+        
+        .gesture-toggle {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        
+        .toggle-box {
+            width: 40px;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            position: relative;
+            transition: 0.3s;
+            margin-right: 10px;
+        }
+        
+        .toggle-box::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: 0.3s;
+        }
+        
+        .toggle-box.active {
+            background: var(--success-color);
+        }
+        
+        .toggle-box.active::after {
+            left: 22px;
+        }
+        
+        #gesture-canvas {
+            width: 100%;
+            border-radius: 8px;
+            background: #000;
+            margin-top: 10px;
+            border: 1px solid var(--accent-color);
+            display: none;
+        }
+        
+        .gesture-help {
+            font-size: 0.7rem;
+            color: #aaa;
+            margin-top: 5px;
+            line-height: 1.3;
+        }
+        
+        /* 手势反馈样式 */
+        .gesture-feedback {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+            color: white;
+            z-index: 2000;
+            pointer-events: none;
+            text-shadow: 0 0 20px var(--primary-color);
+            opacity: 0;
+            animation: gestureFeedback 1s ease-out forwards;
+        }
+        
+        @keyframes gestureFeedback {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
+            100% { opacity: 0; transform: translate(-50%, -150%) scale(1); }
+        }
+        
+        .score-records {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+
+        .score-record-header {
+            display: grid;
+            grid-template-columns: 1fr 80px 100px;
+            padding: 10px;
+            background: rgba(106, 140, 255, 0.1);
+            border-radius: 4px;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .score-record-item {
+            display: grid;
+            grid-template-columns: 1fr 80px 100px;
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(106, 140, 255, 0.1);
+        }
+
+        .score-record-item:last-child {
+            border-bottom: none;
+        }
+
+        .score-points {
+            color: var(--success-color);
+            font-weight: bold;
+            text-align: center;
+        }
+
+        .score-points.negative {
+            color: var(--danger-color);
+        }
+
+        .score-time {
+            color: rgba(255, 255, 255, 0.7);
+            text-align: right;
+            font-size: 0.9em;
+        }
+
+        .score-summary-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+
+        .score-summary-table th,
+        .score-summary-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid rgba(106, 140, 255, 0.2);
+        }
+
+        .score-summary-table th {
+            background: rgba(106, 140, 255, 0.1);
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+
+        .score-summary-table tr:hover {
+            background: rgba(106, 140, 255, 0.05);
+        }
+
+        .total-points {
+            color: var(--success-color);
+            font-weight: bold;
+        }
+
+        .total-points.negative {
+            color: var(--danger-color);
+        }
+
+        .no-records {
+            text-align: center;
+            padding: 20px;
+            color: #ccc;
+            font-style: italic;
+        }
+
+        .error-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(15, 17, 35, 0.9);
+            color: var(--danger-color);
+            padding: 20px;
+            border-radius: 8px;
+            border: 1px solid var(--danger-color);
+            z-index: 1000;
+            max-width: 80%;
+            text-align: center;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        .error-retry {
+            margin-top: 15px;
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        /* 音乐控制按钮样式 - 修复部分 */
+        .music-control-btn {
+            position: absolute;
+            bottom: 130px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            color: white;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            box-shadow: 0 0 20px rgba(106, 140, 255, 0.5);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+
+        .music-control-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 30px rgba(106, 140, 255, 0.7);
+        }
+
+        /* 音乐控制面板样式 */
+        .music-panel {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 100;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .music-panel.show {
+            display: flex;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .music-panel-content {
+            background: rgba(15, 17, 35, 0.95);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(106, 140, 255, 0.4);
+            border-radius: 10px;
+            padding: 15px;
+            width: 280px;
+            box-shadow: 0 0 30px rgba(106, 140, 255, 0.3);
+            margin-bottom: 10px;
+        }
+
+        .music-panel-title {
+            font-size: 1.2rem;
+            margin-bottom: 15px;
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            text-align: center;
+        }
+
+        .music-close-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: none;
+            border: none;
+            color: var(--primary-color);
+            font-size: 1.2rem;
+            cursor: pointer;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+        }
+
+        .music-close-btn:hover {
+            background: rgba(106, 140, 255, 0.1);
+        }
+
+        .music-upload-section {
+            margin-bottom: 15px;
+        }
+
+        .music-upload-btn {
+            background: linear-gradient(90deg, rgba(106, 140, 255, 0.6), rgba(255, 126, 185, 0.6));
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            text-align: center;
+            cursor: pointer;
+            border: 1px solid rgba(106, 140, 255, 0.4);
+            transition: all 0.3s ease;
+        }
+
+        .music-upload-btn:hover {
+            background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        }
+
+        .music-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .music-action-btn {
+            flex: 1;
+            padding: 8px;
+            border-radius: 6px;
+            border: 1px solid rgba(106, 140, 255, 0.4);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .music-play-btn {
+            background: linear-gradient(90deg, rgba(81, 207, 102, 0.7), rgba(127, 255, 203, 0.7));
+        }
+
+        .music-play-btn:hover {
+            background: linear-gradient(90deg, var(--success-color), var(--accent-color));
+        }
+
+        .music-pause-btn {
+            background: linear-gradient(90deg, rgba(255, 212, 59, 0.7), rgba(255, 126, 185, 0.7));
+        }
+
+        .music-pause-btn:hover {
+            background: linear-gradient(90deg, var(--warning-color), var(--secondary-color));
+        }
+
+        .music-file-info {
+            margin-top: 10px;
+            font-size: 0.8rem;
+            color: #ccc;
+            text-align: center;
+            padding: 5px;
+            border-radius: 4px;
+            background: rgba(106, 140, 255, 0.1);
+        }
+
+        @media (max-width: 768px) {
+            #app {
+                grid-template-columns: 20% 80%;
+                grid-template-rows: 1fr;
+            }
+            
+            .sidebar {
+                height: 100vh;
+                max-height: 100vh;
+                width: 100%;
+            }
+            
+            .canvas-container {
+                height: 100vh;
+            }
+
+            .sidebar.hidden + .main-content {
+                width: 100%;
+                margin-left: 0;
+            }
+            
+            .main-content.expanded {
+                grid-column: 1 / -1;
+            }
+
+            .result-list {
+                grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            }
+
+            .music-panel {
+                left: 10px;
+                right: 10px;
+                bottom: 80px;
+            }
+
+            .music-panel-content {
+                width: auto;
+                max-width: 300px;
+                margin-left: auto;
+                margin-right: auto;
+            }
+
+            .music-control-btn {
+                bottom: 150px;
+                right: 15px;
+                width: 45px;
+                height: 45px;
+                font-size: 1.3rem;
+            }
+
+            .fullscreen-btn {
+                bottom: 15px;
+                right: 15px;
+            }
+
+            .toggle-sidebar-btn {
+                bottom: 70px;
+                right: 15px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .sidebar {
+                padding: 10px;
+            }
+            
+            h1 {
+                font-size: 1.3rem;
+            }
+            
+            h2 {
+                font-size: 1rem;
+            }
+            
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
+            
+            .score-control-buttons {
+                grid-template-columns: 1fr;
+            }
+            
+            .result-title {
+                font-size: 1.5rem;
+            }
+            
+            .result-name {
+                font-size: 1.2rem;
+            }
+            
+            .gesture-help {
+                font-size: 0.6rem;
+            }
+
+            .music-panel-content {
+                width: 100%;
+                max-width: 280px;
+            }
+
+            .music-control-btn {
+                bottom: 140px;
+                right: 10px;
+                width: 40px;
+                height: 40px;
+                font-size: 1.2rem;
+            }
+        }
+
+        .group-score-panel {
+            background: rgba(15, 17, 35, 0.8);
+            border: 1px solid rgba(106, 140, 255, 0.4);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .group-score-title {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            color: var(--primary-color);
+        }
+        
+        .group-score-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        
+        .group-score-btn {
+            padding: 8px;
+            font-size: 0.9rem;
+        }
+        
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .name-tag {
+            padding: 5px 10px;
+            border-radius: 4px;
+            color: white;
+            font-weight: bold;
+            text-align: center;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+        }
+
+        /* 减分按钮样式 */
+        .btn-danger {
+            background: linear-gradient(90deg, rgba(255, 107, 107, 0.6), rgba(255, 212, 59, 0.6));
+            color: white;
+        }
+        
+        .btn-danger:hover:not(:disabled) {
+            background: linear-gradient(90deg, var(--danger-color), var(--warning-color));
+            box-shadow: 0 0 15px rgba(255, 107, 107, 0.4);
+        }
+        
+        .group-remove-point-btn {
+            background: linear-gradient(90deg, rgba(255, 107, 107, 0.7), rgba(255, 212, 59, 0.7));
+            margin-top: 10px;
+            padding: 10px;
+            width: 80%;
+            font-weight: bold;
+        }
+        
+        .group-remove-point-btn:hover {
+            background: linear-gradient(90deg, var(--danger-color), var(--warning-color));
+            box-shadow: 0 0 10px rgba(255, 107, 107, 0.5);
+        }
+    </style>
+</head>
+<body>
+    <!-- 错误提示元素 -->
+    <div class="error-message" id="error-message">
+        <h3>场景加载失败</h3>
+        <p id="error-details">请检查您的网络连接或尝试刷新页面</p>
+        <button class="error-retry" id="error-retry">重试加载</button>
+    </div>
+    
+    <div class="tech-glow" style="width: 800px; height: 800px; top: -400px; left: -400px;"></div>
+    <div class="tech-glow" style="width: 600px; height: 600px; bottom: -300px; right: -300px;"></div>
+    
+    <div id="app">
+        <div class="sidebar">
+            <h1>星空主题点名系统</h1>
+            
+            <div class="control-group">
+                <h2>班级选择</h2>
+                <select id="class-select">
+                    <option value="class1">计算机科学与技术1班</option>
+                    <option value="class2">软件工程2班</option>
+                    <option value="class3">人工智能3班</option>
+                </select>
+                
+                <div class="call-status" id="call-status">
+                    点名进度: 0/0 学生
+                </div>
+                
+                <div class="file-input-container">
+                    <label for="upload-file" class="file-input-label">
+                        <i>📁</i>上传学生名单
+                    </label>
+                    <input type="file" id="upload-file" class="file-input" accept=".xlsx,.xls,.csv,.doc,.docx,.txt">
+                    <div id="file-name" class="file-name"></div>
+                    <div class="file-help">
+                        支持Excel、Word、CSV、TXT<br>
+                        请确保包含姓名和学分列
+                    </div>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <h2>点名控制</h2>
+                <button id="start-roll-btn" class="btn-primary">
+                    <i>🎲</i>开始点名 (空格键)
+                </button>
+                <button id="stop-roll-btn" class="btn-secondary" disabled>
+                    <i>⏹️</i>停止点名
+                </button>
+                
+                <div class="dropdown">
+                    <button class="dropdown-btn btn-secondary" id="dropdown-toggle">
+                        <i>👥</i>选择人数: <span id="selected-number-display">1人</span>
+                    </button>
+                    <div class="dropdown-content" id="multi-select-dropdown">
+                        <a href="#" data-number="1">1人</a>
+                        <a href="#" data-number="2">2人</a>
+                        <a href="#" data-number="3">3人</a>
+                        <a href="#" data-number="4">4人</a>
+                        <a href="#" data-number="5">5人</a>
+                    </div>
+                </div>
+                
+                <div class="voice-control">
+                    <div class="voice-toggle" id="voice-toggle"></div>
+                    <span class="voice-label">语音播报</span>
+                </div>
+                
+                <div class="status-bar" id="status">准备就绪</div>
+            </div>
+            
+            <!-- 新增手势控制区域 -->
+            <div class="control-group">
+                <h2>手势 AI 控制</h2>
+                <div class="gesture-control">
+                    <div class="gesture-toggle" id="gesture-toggle">
+                        <div class="toggle-box"></div>
+                        <span class="voice-label">开启手势感应</span>
+                    </div>
+                    <video id="input-video" style="display:none;"></video>
+                    <canvas id="gesture-canvas"></canvas>
+                    <div class="gesture-help">
+                        ✊ 握拳:开始点名 | 🖐️ 张开:停止点名 | ✌️ 比耶:切换人数 | 👌 OK:加分 | 👎 拇指向下:减分
+                    </div>
+                </div>
+            </div>
+            
+            <div class="control-group">
+                <h2>学生管理</h2>
+                <div class="score-control-buttons">
+                    <button id="add-score-btn" class="btn-primary">
+                        <i>➕</i>加分
+                    </button>
+                    <button id="remove-score-btn" class="btn-danger">
+                        <i>➖</i>减分
+                    </button>
+                </div>
+                <div class="action-buttons">
+                    <button id="reset-score-btn" class="btn-secondary">
+                        <i>🔄</i>积分重置
+                    </button>
+                    <button id="reset-call-btn" class="btn-secondary">
+                        <i>🔄</i>重置点名记录
+                    </button>
+                </div>
+
+                <button id="view-score-summary-btn" class="btn-primary" style="margin-top: 8px;">
+                    <i>📊</i>查看加减分情况
+                </button>
+            </div>
+            
+            <button id="export-btn" class="btn-primary">
+                <i>📤</i>导出点名数据
+            </button>
+            
+            <div class="control-group">
+                <h2>学生列表 <span class="badge" id="selected-count">0</span></h2>
+                <div class="student-list" id="student-list">
+                    <!-- 学生列表将通过JavaScript动态生成 -->
+                </div>
+            </div>
+        </div>
+        
+        <div class="main-content">
+            <div class="header">
+                <h2>当前班级: <span id="current-class">计算机科学与技术1班</span></h2>
+                <div>
+                </div>
+            </div>
+            
+            <div class="canvas-container">
+                <div class="loading-indicator" id="loading-indicator">
+                    <div class="loading-spinner"></div>
+                    <div id="loading-text">正在加载星空场景...</div>
+                    <div class="loading-progress">
+                        <div class="loading-bar" id="loading-bar"></div>
+                    </div>
+                    <div class="loading-detail" id="loading-detail">初始化环境...</div>
+                </div>
+                
+                <div class="performance-mode" id="performance-mode">
+                    性能模式: 高品质
+                </div>
+                
+                <div class="three-container" id="three-container"></div>
+                <canvas id="canvas"></canvas>
+                
+                <div class="particles-container" id="particles-container"></div>
+                
+                <button id="fullscreen-btn" class="fullscreen-btn">⛶</button>
+                <div id="fullscreen-indicator" class="fullscreen-indicator">全屏模式: 点击球体切换点名</div>
+
+                <button id="toggle-sidebar-btn" class="toggle-sidebar-btn">📋</button>
+                
+                <!-- 音乐控制按钮 - 现在会显示在右下角 -->
+                <button id="music-control-btn" class="music-control-btn">🎵</button>
+                
+                <!-- 音乐控制面板 -->
+                <div class="music-panel" id="music-panel">
+                    <div class="music-panel-content">
+                        <button class="music-close-btn" id="music-close-btn">×</button>
+                        <h3 class="music-panel-title">背景音乐控制</h3>
+                        
+                        <div class="music-upload-section">
+                            <label for="upload-music" class="music-upload-btn">
+                                <i>📁</i> 上传背景音乐
+                            </label>
+                            <input type="file" id="upload-music" class="file-input" accept=".mp3,.wav,.ogg">
+                            <div id="music-file-name" class="music-file-info">内置: 星际漫游</div>
+                        </div>
+                        
+                        <div class="music-actions">
+                            <button id="play-music" class="music-action-btn music-play-btn" disabled>
+                                <i>▶️</i>播放
+                            </button>
+                            <button id="pause-music" class="music-action-btn music-pause-btn" disabled>
+                                <i>⏸️</i>暂停
+                            </button>
+                        </div>
+                        
+                        <div id="music-status" class="music-file-info">请上传或使用内置音乐</div>
+                    </div>
+                </div>
+                
+                <div class="result-card" id="result-card">
+                    <button class="close-result" id="close-result">✕</button>
+                    <h2 class="result-title">选中的学生</h2>
+                    <div class="result-list" id="result-list"></div>
+                    <button class="group-add-point-btn" id="group-add-point-btn">
+                        <i>🏆</i>为所有选中学生加1分
+                    </button>
+                    <button class="group-remove-point-btn" id="group-remove-point-btn">
+                        <i>⚠️</i>为所有选中学生减1分
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="edit-modal" id="edit-modal">
+        <div class="edit-content">
+            <h3 class="edit-title">编辑学生信息</h3>
+            <input type="hidden" id="edit-student-id">
+            <div class="edit-form-group">
+                <label class="edit-label" for="edit-student-name">姓名</label>
+                <input type="text" id="edit-student-name" class="edit-input">
+            </div>
+            <div class="edit-form-group">
+                <label class="edit-label" for="edit-student-score">学分</label>
+                <input type="number" id="edit-student-score" class="edit-input" min="0" step="0.5">
+            </div>
+            <div class="edit-actions">
+                <button class="edit-save">保存</button>
+                <button class="edit-cancel">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加减分情况弹窗 -->
+    <div class="edit-modal" id="score-summary-modal">
+        <div class="edit-content" style="max-width: 500px;">
+            <h3 class="edit-title">本节课加减分情况</h3>
+            <div class="score-summary-content" id="score-summary-content">
+                <!-- 加减分情况将通过JavaScript动态生成 -->
+            </div>
+            <div class="edit-actions">
+                <button class="edit-cancel" id="close-score-summary">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const performanceConfig = {
+            isLowEndDevice: false,
+            starCount: 2000,
+            cardTrailCount: 20,
+            enableShadows: true,
+            animationQuality: 'high'
+        };
+        
+        const state = {
+            students: [],
+            selectedNumber: 1,
+            isRolling: false,
+            rollingInterval: null,
+            selectedStudents: [],
+            calledStudents: [],
+            voiceEnabled: false,
+            gestureEnabled: false,
+            performanceMode: 'high',
+            music: null,
+            currentClass: '计算机科学与技术1班',
+            scoreRecords: [],
+            gestureTimeout: 0,
+            hands: null,
+            cameraAI: null,
+            
+            scene: null,
+            camera: null,
+            renderer: null,
+            controls: null,
+            sphere: null,
+            stars: [],
+            nameTags: [],
+            sphereRotationSpeed: 0.005,
+            isSphereRotating: false,
+            animationId: null,
+            sceneLoaded: false,
+            loadAttempts: 0,
+            maxLoadAttempts: 3,
+            musicError: null,
+            musicLoading: false,
+            cards: [],
+            cardGroup: null,
+            currentRotationSpeed: { y: 0.005, x: 0.002 },
+            isAnimatingCards: false,
+            cardAnimationProgress: 0,
+            isAnimatingSphere: false,
+            sphereAnimationProgress: 0,
+            selectedCard: null,
+            classData: {
+                class1: [
+                    { id: 1, name: "张三", score: 0, attendance: 0, called: false },
+                    { id: 2, name: "李四", score: 0, attendance: 0, called: false },
+                    { id: 3, name: "王五", score: 0, attendance: 0, called: false },
+                    { id: 4, name: "赵六", score: 0, attendance: 0, called: false },
+                    { id: 5, name: "钱七", score: 0, attendance: 0, called: false },
+                    { id: 6, name: "孙八", score: 0, attendance: 0, called: false },
+                    { id: 7, name: "周九", score: 0, attendance: 0, called: false },
+                    { id: 8, name: "吴十", score: 0, attendance: 0, called: false }
+                ],
+                class2: [
+                    { id: 1, name: "Tom", score: 0, attendance: 0, called: false },
+                    { id: 2, name: "Jerry", score: 0, attendance: 0, called: false },
+                    { id: 3, name: "Alice", score: 0, attendance: 0, called: false },
+                    { id: 4, name: "Bob", score: 0, attendance: 0, called: false }
+                ],
+                class3: [
+                    { id: 1, name: "小明", score: 0, attendance: 0, called: false },
+                    { id: 2, name: "小红", score: 0, attendance: 0, called: false },
+                    { id: 3, name: "小刚", score: 0, attendance: 0, called: false },
+                    { id: 4, name: "小丽", score: 0, attendance: 0, called: false },
+                    { id: 5, name: "小强", score: 0, attendance: 0, called: false }
+                ]
+            },
+            currentClassKey: "class1",
+            musicPanelVisible: false
+        };
+        
+        const rotationSpeeds = {
+            normal: { y: 0.005, x: 0.002 },
+            fast: { y: 0.05, x: 0.01 },
+            fastest: { y: 0.15, x: 0.03 }
+        };
+
+        const elements = {
+            startRollBtn: document.getElementById('start-roll-btn'),
+            stopRollBtn: document.getElementById('stop-roll-btn'),
+            studentList: document.getElementById('student-list'),
+            resultCard: document.getElementById('result-card'),
+            resultList: document.getElementById('result-list'),
+            closeResult: document.getElementById('close-result'),
+            statusBar: document.getElementById('status'),
+            voiceToggle: document.getElementById('voice-toggle'),
+            callStatus: document.getElementById('call-status'),
+            selectedCount: document.getElementById('selected-count'),
+            dropdownToggle: document.getElementById('dropdown-toggle'),
+            multiSelectDropdown: document.getElementById('multi-select-dropdown'),
+            selectedNumberDisplay: document.getElementById('selected-number-display'),
+            uploadFile: document.getElementById('upload-file'),
+            fileName: document.getElementById('file-name'),
+            classSelect: document.getElementById('class-select'),
+            currentClass: document.getElementById('current-class'),
+            addScoreBtn: document.getElementById('add-score-btn'),
+            removeScoreBtn: document.getElementById('remove-score-btn'),
+            resetScoreBtn: document.getElementById('reset-score-btn'),
+            resetCallBtn: document.getElementById('reset-call-btn'),
+            exportBtn: document.getElementById('export-btn'),
+            fullscreenBtn: document.getElementById('fullscreen-btn'),
+            fullscreenIndicator: document.getElementById('fullscreen-indicator'),
+            toggleSidebarBtn: document.getElementById('toggle-sidebar-btn'),
+            sidebar: document.querySelector('.sidebar'),
+            performanceMode: document.getElementById('performance-mode'),
+            loadingIndicator: document.getElementById('loading-indicator'),
+            loadingBar: document.getElementById('loading-bar'),
+            loadingText: document.getElementById('loading-text'),
+            loadingDetail: document.getElementById('loading-detail'),
+            playMusic: document.getElementById('play-music'),
+            pauseMusic: document.getElementById('pause-music'),
+            uploadMusic: document.getElementById('upload-music'),
+            musicFileName: document.getElementById('music-file-name'),
+            editModal: document.getElementById('edit-modal'),
+            editStudentId: document.getElementById('edit-student-id'),
+            editStudentName: document.getElementById('edit-student-name'),
+            editStudentScore: document.getElementById('edit-student-score'),
+            editSave: document.querySelector('.edit-save'),
+            editCancel: document.querySelector('.edit-cancel'),
+            groupAddPointBtn: document.getElementById('group-add-point-btn'),
+            groupRemovePointBtn: document.getElementById('group-remove-point-btn'),
+            musicStatus: document.getElementById('music-status'),
+            threeContainer: document.getElementById('three-container'),
+            errorMessage: document.getElementById('error-message'),
+            errorDetails: document.getElementById('error-details'),
+            errorRetry: document.getElementById('error-retry'),
+            gestureToggle: document.getElementById('gesture-toggle'),
+            gestureCanvas: document.getElementById('gesture-canvas'),
+            inputVideo: document.getElementById('input-video'),
+            viewScoreSummaryBtn: document.getElementById('view-score-summary-btn'),
+            scoreSummaryModal: document.getElementById('score-summary-modal'),
+            closeScoreSummary: document.getElementById('close-score-summary'),
+            scoreSummaryContent: document.getElementById('score-summary-content'),
+            musicControlBtn: document.getElementById('music-control-btn'),
+            musicPanel: document.getElementById('music-panel'),
+            musicCloseBtn: document.getElementById('music-close-btn')
+        };
+
+        // ================ 手势识别功能 ================
+        function initGestureRecognition() {
+            const videoElement = elements.inputVideo;
+            const canvasElement = elements.gestureCanvas;
+            const canvasCtx = canvasElement.getContext('2d');
+            
+            canvasElement.width = 320;
+            canvasElement.height = 240;
+            
+            state.hands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+            
+            state.hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7
+            });
+            
+            state.hands.onResults((results) => {
+                canvasCtx.save();
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+                
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    analyzeGesture(results.multiHandLandmarks[0]);
+                }
+                
+                canvasCtx.restore();
+            });
+            
+            state.cameraAI = new Camera(videoElement, {
+                onFrame: async () => {
+                    if (state.gestureEnabled) {
+                        try {
+                            await state.hands.send({image: videoElement});
+                        } catch (error) {
+                            console.error('手势识别错误:', error);
+                        }
+                    }
+                },
+                width: 320,
+                height: 240
+            });
+        }
+        
+        function toggleGesture() {
+            state.gestureEnabled = !state.gestureEnabled;
+            const toggleBox = elements.gestureToggle.querySelector('.toggle-box');
+            toggleBox.classList.toggle('active');
+            elements.gestureCanvas.style.display = state.gestureEnabled ? 'block' : 'none';
+            
+            if (state.gestureEnabled) {
+                state.cameraAI.start();
+                showStatus('手势控制已开启', 'success');
+            } else {
+                state.cameraAI.stop();
+                showStatus('手势控制已关闭', 'info');
+            }
+        }
+        
+        function analyzeGesture(landmarks) {
+            const now = Date.now();
+            if (now - state.gestureTimeout < 1500) return;
+            
+            // 基础判定：指尖是否高于指根
+            const thumbExtended = landmarks[4].x < landmarks[3].x; 
+            const indexExtended = landmarks[8].y < landmarks[6].y;
+            const middleExtended = landmarks[12].y < landmarks[10].y;
+            const ringExtended = landmarks[16].y < landmarks[14].y;
+            const pinkyExtended = landmarks[20].y < landmarks[18].y;
+            const extendedCount = [indexExtended, middleExtended, ringExtended, pinkyExtended].filter(Boolean).length;
+            
+            // 1. ✊ 握拳 -> 开始点名
+            if (extendedCount === 0 && !thumbExtended && !state.isRolling) {
+                startRollCall();
+                triggerGestureEffect('开始点名', '✊');
+                state.gestureTimeout = now;
+            } 
+            // 2. 🖐️ 张开 -> 停止点名
+            else if (extendedCount === 4 && thumbExtended && state.isRolling) {
+                stopRollCall();
+                triggerGestureEffect('停止点名', '🖐️');
+                state.gestureTimeout = now;
+            }
+            // 3. ✌️ 比耶 -> 切换人数
+            else if (indexExtended && middleExtended && !ringExtended && !pinkyExtended) {
+                state.selectedNumber = (state.selectedNumber % 5) + 1;
+                elements.selectedNumberDisplay.textContent = `${state.selectedNumber}人`;
+                elements.multiSelectDropdown.querySelectorAll('a').forEach(i => i.classList.remove('selected'));
+                elements.multiSelectDropdown.querySelector(`a[data-number="${state.selectedNumber}"]`).classList.add('selected');
+                triggerGestureEffect(`切换: ${state.selectedNumber}人`, '✌️');
+                state.gestureTimeout = now;
+            }
+            // 4. 👌 OK手势 -> 加分
+            else if (Math.hypot(landmarks[4].x - landmarks[8].x, landmarks[4].y - landmarks[8].y) < 0.05 && middleExtended) {
+                if (state.selectedStudents.length > 0) {
+                    addScoreToAllSelectedInResult(1);
+                    triggerGestureEffect('加分 +1', '👌');
+                } else {
+                    addScoreToSelected(1);
+                    triggerGestureEffect('为选中学生加分 +1', '👌');
+                }
+                state.gestureTimeout = now;
+            }
+            // 5. 👎 拇指向下 -> 减分 (新增手势)
+            else if (!thumbExtended && indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
+                if (state.selectedStudents.length > 0) {
+                    addScoreToAllSelectedInResult(-1);
+                    triggerGestureEffect('减分 -1', '👎');
+                } else {
+                    addScoreToSelected(-1);
+                    triggerGestureEffect('为选中学生减分 -1', '👎');
+                }
+                state.gestureTimeout = now;
+            }
+        }
+        
+        function triggerGestureEffect(text, emoji) {
+            const div = document.createElement('div');
+            div.className = 'gesture-feedback';
+            div.innerHTML = `${emoji}<br><span style="font-size: 1.5rem;">${text}</span>`;
+            document.body.appendChild(div);
+            
+            setTimeout(() => {
+                div.remove();
+            }, 1000);
+        }
+
+        // ================ 音乐控制功能 ================
+        function toggleMusicPanel() {
+            state.musicPanelVisible = !state.musicPanelVisible;
+            if (state.musicPanelVisible) {
+                elements.musicPanel.classList.add('show');
+                elements.musicControlBtn.style.transform = 'scale(1.1)';
+                elements.musicControlBtn.style.boxShadow = '0 0 30px rgba(106, 140, 255, 0.7)';
+            } else {
+                elements.musicPanel.classList.remove('show');
+                elements.musicControlBtn.style.transform = 'scale(1)';
+                elements.musicControlBtn.style.boxShadow = '0 0 20px rgba(106, 140, 255, 0.5)';
+            }
+        }
+
+        function handleMusicUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            if (!file.type.match('audio.*')) {
+                showStatus('请上传音频文件', 'error');
+                return;
+            }
+            
+            elements.musicFileName.textContent = file.name;
+            
+            if (state.music) {
+                state.music.pause();
+                state.music = null;
+            }
+            
+            const objectURL = URL.createObjectURL(file);
+            state.music = new Audio(objectURL);
+            state.music.loop = true;
+            state.music.volume = 0.5;
+            
+            state.music.addEventListener('canplaythrough', () => {
+                elements.playMusic.disabled = false;
+                elements.musicStatus.textContent = `已加载: ${file.name}`;
+                showStatus(`音乐文件已加载: ${file.name}`, 'success');
+            });
+            
+            state.music.addEventListener('error', (e) => {
+                console.error('音乐加载错误:', e);
+                elements.musicStatus.textContent = '加载失败，请尝试其他文件';
+                showStatus('音乐文件加载失败', 'error');
+                elements.playMusic.disabled = true;
+                elements.pauseMusic.disabled = true;
+            });
+        }
+        
+        function playMusic() {
+            if (state.music) {
+                state.music.play().then(() => {
+                    elements.playMusic.disabled = true;
+                    elements.pauseMusic.disabled = false;
+                    elements.musicStatus.textContent = '播放中...';
+                    showStatus('背景音乐已开始播放', 'success');
+                }).catch(error => {
+                    console.error('播放失败:', error);
+                    showStatus('播放失败，请检查音频文件', 'error');
+                });
+            } else {
+                showStatus('请先上传音乐文件', 'warning');
+            }
+        }
+        
+        function pauseMusic() {
+            if (state.music) {
+                state.music.pause();
+                elements.playMusic.disabled = false;
+                elements.pauseMusic.disabled = true;
+                elements.musicStatus.textContent = '已暂停';
+                showStatus('背景音乐已暂停', 'info');
+            }
+        }
+        
+        // ================ 新增：停止音乐功能 ================
+        function stopMusic() {
+            if (state.music) {
+                state.music.pause();
+                elements.playMusic.disabled = false;
+                elements.pauseMusic.disabled = true;
+                elements.musicStatus.textContent = '已停止';
+                showStatus('背景音乐已停止', 'info');
+            }
+        }
+
+        // ================ 原有功能 ================
+        function detectPerformance() {
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            const hasLowMemory = navigator.deviceMemory && navigator.deviceMemory < 4;
+            
+            performanceConfig.isLowEndDevice = isMobile || hasLowMemory;
+            
+            if (performanceConfig.isLowEndDevice) {
+                performanceConfig.starCount = 800;
+                performanceConfig.cardTrailCount = 5;
+                performanceConfig.enableShadows = false;
+                performanceConfig.animationQuality = 'low';
+                return 'low';
+            } else {
+                return 'high';
+            }
+        }
+        
+        function applyPerformanceSettings() {
+            if (state.performanceMode === 'low') {
+                performanceConfig.starCount = 800;
+                performanceConfig.cardTrailCount = 5;
+                performanceConfig.enableShadows = false;
+                performanceConfig.animationQuality = 'low';
+                
+                state.currentRotationSpeed = {
+                    normal: { y: 0.003, x: 0.001 },
+                    fast: { y: 0.03, x: 0.008 },
+                    fastest: { y: 0.08, x: 0.02 }
+                };
+            } else {
+                performanceConfig.starCount = 2000;
+                performanceConfig.cardTrailCount = 20;
+                performanceConfig.enableShadows = true;
+                performanceConfig.animationQuality = 'high';
+                
+                state.currentRotationSpeed = {
+                    normal: { y: 0.005, x: 0.002 },
+                    fast: { y: 0.05, x: 0.01 },
+                    fastest: { y: 0.15, x: 0.03 }
+                };
+            }
+            
+            if (state.renderer) {
+                state.renderer.shadowMap.enabled = performanceConfig.enableShadows;
+            }
+        }
+        
+        function updateLoadingStatus(percent, text, detail = '') {
+            elements.loadingBar.style.width = `${percent}%`;
+            elements.loadingText.textContent = text;
+            if (detail) {
+                elements.loadingDetail.textContent = detail;
+            }
+            
+            if (percent === 100) {
+                setTimeout(() => {
+                    elements.loadingIndicator.style.opacity = '0';
+                    setTimeout(() => {
+                        elements.loadingIndicator.style.display = 'none';
+                    }, 500);
+                }, 800);
+            }
+        }
+        
+        function initSampleStudents() {
+            state.students = [...state.classData[state.currentClassKey]];
+            state.students.sort((a, b) => b.score - a.score);
+            renderStudentList();
+            updateCallStatus();
+            
+            if (state.sceneLoaded) {
+                createStudentCards();
+            } else {
+                const checkSceneLoaded = setInterval(() => {
+                    if (state.sceneLoaded) {
+                        createStudentCards();
+                        clearInterval(checkSceneLoaded);
+                    }
+                }, 500);
+            }
+        }
+        
+        function renderStudentList() {
+            elements.studentList.innerHTML = '';
+            
+            state.students.forEach(student => {
+                const item = document.createElement('div');
+                item.className = `student-item ${student.called ? 'called' : ''}`;
+                item.innerHTML = `
+                    <input type="checkbox" class="checkbox" data-id="${student.id}">
+                    <div class="student-name">${student.name}</div>
+                    <div class="student-score ${student.score < 0 ? 'negative' : ''}">${student.score}</div>
+                `;
+                
+                item.addEventListener('click', (e) => {
+                    if (e.target.classList.contains('checkbox')) return;
+                    const checkbox = item.querySelector('.checkbox');
+                    checkbox.checked = !checkbox.checked;
+                    updateSelectedCount();
+                });
+                
+                const checkbox = item.querySelector('.checkbox');
+                checkbox.addEventListener('change', updateSelectedCount);
+                
+                elements.studentList.appendChild(item);
+            });
+            
+            updateSelectedCount();
+        }
+
+        function updateSelectedCount() {
+            const checkedCount = document.querySelectorAll('.checkbox:checked').length;
+            elements.selectedCount.textContent = checkedCount;
+        }
+
+        function updateCallStatus() {
+            const calledCount = state.students.filter(s => s.called).length;
+            elements.callStatus.textContent = `点名进度: ${calledCount}/${state.students.length} 学生`;
+        }
+
+        function startRollCall() {
+            if (state.students.length === 0) {
+                showStatus('请先上传学生名单', 'warning');
+                return;
+            }
+            
+            if (!state.sceneLoaded) {
+                showStatus('星空场景正在加载中，请稍候...', 'warning');
+                return;
+            }
+            
+            if (state.rollingInterval) {
+                clearInterval(state.rollingInterval);
+            }
+            
+            state.isRolling = true;
+            elements.startRollBtn.disabled = true;
+            elements.stopRollBtn.disabled = false;
+            showStatus('正在随机点名...', 'info');
+            elements.resultCard.classList.remove('show');
+            state.isSphereRotating = true;
+            state.currentRotationSpeed = rotationSpeeds.fastest;
+            formSphereAndRotate();
+            
+            // ================ 新增：开始点名时自动播放背景音乐 ================
+            if (state.music) {
+                state.music.play().then(() => {
+                    elements.playMusic.disabled = true;
+                    elements.pauseMusic.disabled = false;
+                    elements.musicStatus.textContent = '播放中...';
+                    showStatus('点名开始，背景音乐已自动播放', 'success');
+                }).catch(error => {
+                    console.error('音乐播放失败:', error);
+                    showStatus('音乐播放失败，继续点名流程', 'warning');
+                });
+            } else {
+                showStatus('点名开始，未检测到背景音乐', 'info');
+            }
+            
+            state.rollingInterval = setInterval(() => {
+                selectRandomStudents();
+            }, 100);
+        }
+
+        function stopRollCall() {
+            if (state.rollingInterval) {
+                clearInterval(state.rollingInterval);
+                state.rollingInterval = null;
+            }
+            
+            state.isRolling = false;
+            elements.startRollBtn.disabled = false;
+            elements.stopRollBtn.disabled = true;
+            state.currentRotationSpeed = rotationSpeeds.normal;
+            selectRandomStudents(true);
+            setTimeout(() => {
+                elements.resultCard.classList.add('show');
+            }, 50);
+            
+            state.selectedStudents.forEach(student => {
+                const found = state.students.find(s => s.id === student.id);
+                if (found && !found.called) {
+                    found.called = true;
+                }
+            });
+            
+            renderStudentList();
+            updateCallStatus();
+            showStatus('点名已停止', 'success');
+            keepCardsOnSphere();
+            
+            // ================ 新增：结束点名时自动暂停背景音乐 ================
+            if (state.music && !state.music.paused) {
+                state.music.pause();
+                elements.playMusic.disabled = false;
+                elements.pauseMusic.disabled = true;
+                elements.musicStatus.textContent = '已暂停';
+                showStatus('点名结束，背景音乐已暂停', 'info');
+            }
+            
+            if (state.voiceEnabled) {
+                speakResults();
+            }
+        }
+        
+        function formSphereAndRotate() {
+            state.isAnimatingSphere = true;
+            state.sphereAnimationProgress = 0;
+            state.cardGroup.rotation.set(0, 0, 0);
+            
+            state.cards.forEach((card, index) => {
+                if (!card.userData.originalGridPosition) {
+                    card.userData.originalGridPosition = card.position.clone();
+                }
+                const targetPos = card.userData.spherePosition;
+                gsap.to(card.position, {
+                    x: targetPos.x,
+                    y: targetPos.y,
+                    z: targetPos.z,
+                    duration: 1.0,
+                    ease: "power2.out",
+                    onUpdate: () => {
+                        card.lookAt(new THREE.Vector3(0, 0, 0));
+                    }
+                });
+                
+                gsap.to(card.scale, {
+                    x: 0.6,
+                    y: 0.6,
+                    z: 0.6,
+                    duration: 1.0,
+                    ease: "power2.out"
+                });
+            });
+            
+            state.sphere.visible = true;
+            gsap.to(state.sphere.material, {
+                opacity: 0.3,
+                duration: 1,
+                ease: "power2.out"
+            });
+            
+            gsap.to(state.sphere.scale, {
+                x: 0.8, 
+                y: 0.8,
+                z: 0.8,
+                duration: 1.0,
+                ease: "power2.out"
+            });
+        }
+        
+        function keepCardsOnSphere() {
+            state.cards.forEach((card, index) => {
+                if (card.userData.spherePosition) {
+                    gsap.to(card.position, {
+                        x: card.userData.spherePosition.x * 0.8,
+                        y: card.userData.spherePosition.y * 0.8,
+                        z: card.userData.spherePosition.z * 0.8,
+                        duration: 1.0,
+                        ease: "power2.out",
+                        onUpdate: () => {
+                            card.lookAt(new THREE.Vector3(0, 0, 0));
+                        }
+                    });
+                }
+                
+                gsap.to(card.scale, {
+                    x: card.userData.baseScale * 0.33,
+                    y: card.userData.baseScale * 0.33,
+                    z: card.userData.baseScale * 0.33,
+                    duration: 1.0,
+                    ease: "power2.out"
+                });
+            });
+            
+            gsap.to(state.sphere.material, {
+                opacity: 0.1,
+                duration: 1,
+                ease: "power2.out"
+            });
+        }
+        
+        function selectRandomStudents(finalSelection = false) {
+            let availableStudents = [...state.students];
+            if (finalSelection) {
+                availableStudents = availableStudents.filter(s => !s.called);
+            }
+            
+            if (availableStudents.length === 0) {
+                availableStudents.push(...state.students);
+            }
+            
+            const actualNumber = Math.min(state.selectedNumber, availableStudents.length);
+            const selected = [];
+            const tempStudents = [...availableStudents];
+            
+            for (let i = 0; i < actualNumber; i++) {
+                const randomIndex = Math.floor(Math.random() * tempStudents.length);
+                selected.push(tempStudents[randomIndex]);
+                tempStudents.splice(randomIndex, 1);
+            }
+            
+            state.selectedStudents = selected;
+            renderResults();
+            
+            if (finalSelection) {
+                state.cards.forEach(card => {
+                    const isSelected = state.selectedStudents.some(s => s.id === card.userData.studentId);
+                    if (card.material && card.material.uniforms) {
+                        card.material.uniforms.selected.value = isSelected ? 1 : 0;
+                    }
+                    
+                    if (isSelected && finalSelection) {
+                        card.scale.set(
+                            card.userData.baseScale * 1.2, 
+                            card.userData.baseScale * 1.2, 
+                            card.userData.baseScale * 1.2
+                        );
+                        
+                        card.userData.originalPosition = card.position.clone();
+                    } else {
+                        card.scale.set(
+                            card.userData.baseScale, 
+                            card.userData.baseScale, 
+                            card.userData.baseScale
+                        );
+                    }
+                });
+            }
+        }
+        
+        function renderResults() {
+            elements.resultList.innerHTML = '';
+            if (state.selectedStudents.length === 0) {
+                const emptyResult = document.createElement('div');
+                emptyResult.className = 'result-empty';
+                emptyResult.textContent = '没有选中的学生';
+                elements.resultList.appendChild(emptyResult);
+                return;
+            }
+            
+            state.selectedStudents.forEach(student => {
+                const resultItem = document.createElement('div');
+                resultItem.className = 'result-item';
+                resultItem.innerHTML = `
+                    <div class="result-name">${student.name}</div>
+                    <div class="result-score ${student.score < 0 ? 'negative' : ''}">学分: ${student.score}</div>
+                    <div class="result-actions">
+                        <button class="add-point-btn" data-id="${student.id}">+1分</button>
+                        <button class="remove-point-btn" data-id="${student.id}">-1分</button>
+                        <button class="remove-btn" data-id="${student.id}">移除</button>
+                    </div>
+                `;
+                
+                elements.resultList.appendChild(resultItem);
+            });
+        }
+        
+        function removeStudentFromResults(studentId) {
+            state.selectedStudents = state.selectedStudents.filter(s => s.id !== studentId);
+            renderResults();
+            highlightSelectedStudents();
+        }
+        
+        function addScore(studentId, points) {
+            const student = state.students.find(s => s.id === studentId);
+            if (student) {
+                student.score += points;
+                state.scoreRecords.push({
+                    studentId: studentId,
+                    studentName: student.name,
+                    points: points,
+                    timestamp: new Date()
+                });
+                
+                if (state.selectedStudents.length === 0) {
+                    elements.resultCard.classList.remove('show');
+                }
+                
+                state.students.sort((a, b) => b.score - a.score);
+                renderStudentList();
+                renderResults();
+                updateCardScore(studentId, student.score);
+                
+                if (state.voiceEnabled) {
+                    if (points > 0) {
+                        speakText(`${student.name}加分${points}分`);
+                    } else if (points < 0) {
+                        speakText(`${student.name}减分${Math.abs(points)}分`);
+                    }
+                }
+            }
+        }
+        
+        function addScoreToSelected(points) {
+            const selectedIds = Array.from(document.querySelectorAll('.checkbox:checked'))
+                .map(checkbox => parseInt(checkbox.dataset.id));
+            
+            if (selectedIds.length === 0) {
+                showStatus('请先选择学生', 'warning');
+                return;
+            }
+            
+            selectedIds.forEach(id => {
+                addScore(id, points);
+            });
+            
+            if (points > 0) {
+                showStatus(`已为${selectedIds.length}名学生加${points}分`, 'success');
+            } else if (points < 0) {
+                showStatus(`已为${selectedIds.length}名学生减${Math.abs(points)}分`, points === -1 ? 'warning' : 'error');
+            }
+        }
+
+        function addScoreToAllSelectedInResult(points) {
+            if (state.selectedStudents.length === 0) {
+                showStatus('没有选中的学生', 'warning');
+                return;
+            }
+            
+            state.selectedStudents.forEach(student => {
+                addScore(student.id, points);
+            });
+            
+            if (points > 0) {
+                showStatus(`已为所有${state.selectedStudents.length}名选中学生加${points}分`, 'success');
+            } else if (points < 0) {
+                showStatus(`已为所有${state.selectedStudents.length}名选中学生减${Math.abs(points)}分`, points === -1 ? 'warning' : 'error');
+            }
+        }
+        
+        // ================ 新增：减分功能 ================
+        function removeScoreFromSelected(points = 1) {
+            const selectedIds = Array.from(document.querySelectorAll('.checkbox:checked'))
+                .map(checkbox => parseInt(checkbox.dataset.id));
+            
+            if (selectedIds.length === 0) {
+                showStatus('请先选择学生', 'warning');
+                return;
+            }
+            
+            selectedIds.forEach(id => {
+                addScore(id, -points);
+            });
+            
+            showStatus(`已为${selectedIds.length}名学生减${points}分`, 'warning');
+        }
+
+        function removeScoreFromAllSelectedInResult(points = 1) {
+            if (state.selectedStudents.length === 0) {
+                showStatus('没有选中的学生', 'warning');
+                return;
+            }
+            
+            state.selectedStudents.forEach(student => {
+                addScore(student.id, -points);
+            });
+            
+            showStatus(`已为所有${state.selectedStudents.length}名选中学生减${points}分`, 'warning');
+        }
+        
+        function resetScores() {
+            if (confirm('确定要重置所有学生的分数吗？')) {
+                state.students.forEach(student => {
+                    student.score = 0;
+                    updateCardScore(student.id, 0);
+                });
+                
+                state.scoreRecords = [];
+                renderStudentList();
+                renderResults();
+                showStatus('所有学生分数已重置', 'info');
+            }
+        }
+        
+        function resetCallRecords() {
+            if (confirm('确定要重置所有点名记录吗？')) {
+                state.students.forEach(student => {
+                    student.called = false;
+                });
+                
+                renderStudentList();
+                updateCallStatus();
+                showStatus('点名记录已重置', 'info');
+                
+                state.cards.forEach(card => {
+                    gsap.to(card.position, {
+                        x: card.userData.targetPosition.x,
+                        y: card.userData.targetPosition.y,
+                        z: card.userData.targetPosition.z,
+                        duration: 1,
+                        ease: "power2.out"
+                    });
+                    
+                    if (card.material && card.material.uniforms) {
+                        card.material.uniforms.selected.value = 0;
+                    }
+                });
+            }
+        }
+        
+        function showStatus(message, type = 'info') {
+            elements.statusBar.textContent = message;
+            switch(type) {
+                case 'success':
+                    elements.statusBar.style.background = 'linear-gradient(90deg, var(--success-color), var(--accent-color))';
+                    break;
+                case 'warning':
+                    elements.statusBar.style.background = 'linear-gradient(90deg, var(--warning-color), #ff922b)';
+                    break;
+                case 'error':
+                    elements.statusBar.style.background = 'linear-gradient(90deg, var(--danger-color), var(--secondary-color))';
+                    break;
+                default:
+                    elements.statusBar.style.background = 'linear-gradient(90deg, var(--primary-color), var(--secondary-color))';
+            }
+            
+            elements.statusBar.style.webkitBackgroundClip = 'text';
+            elements.statusBar.style.backgroundClip = 'text';
+            elements.statusBar.style.color = 'transparent';
+        }
+        
+        function speakResults() {
+            if (state.selectedStudents.length === 0) return;
+            let text = '选中的学生是：';
+            state.selectedStudents.forEach((student, index) => {
+                text += student.name;
+                if (index < state.selectedStudents.length - 1) {
+                    text += '，';
+                }
+            });
+            speakText(text);
+        }
+        
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                window.speechSynthesis.cancel();
+                
+                if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+                    const speakWithPermission = () => {
+                        const utterance = new SpeechSynthesisUtterance(text);
+                        utterance.lang = 'zh-CN';
+                        utterance.rate = 0.9;
+                        
+                        utterance.onstart = () => {
+                            showStatus('语音播报中...', 'info');
+                        };
+                        
+                        utterance.onend = () => {
+                            showStatus('语音播报完成', 'success');
+                        };
+                        
+                        utterance.onerror = (event) => {
+                            console.error('语音播报错误:', event.error);
+                            showStatus('语音播报失败', 'error');
+                        };
+                        
+                        window.speechSynthesis.speak(utterance);
+                        
+                        document.removeEventListener('click', speakWithPermission);
+                        document.removeEventListener('touchstart', speakWithPermission);
+                    };
+                    
+                    document.addEventListener('click', speakWithPermission, { once: true });
+                    document.addEventListener('touchstart', speakWithPermission, { once: true });
+                    
+                    showStatus('请点击屏幕开始语音播报', 'info');
+                } else {
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'zh-CN';
+                    window.speechSynthesis.speak(utterance);
+                }
+            } else {
+                showStatus('您的浏览器不支持语音合成功能', 'warning');
+            }
+        }
+        
+        function exportData() {
+            if (state.students.length === 0) {
+                showStatus('没有数据可导出', 'warning');
+                return;
+            }
+            
+            try {
+                const data = state.students.map(student => ({
+                    班级: state.currentClass,
+                    姓名: student.name,
+                    学分: student.score,
+                    点名状态: student.called ? '已点名' : '未点名',
+                }));
+                
+                const ws = XLSX.utils.json_to_sheet(data);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, '学生数据');
+                const colWidths = [
+                    {wch: 15},
+                    {wch: 10},
+                    {wch: 8},
+                    {wch: 10},
+                ];
+                ws['!cols'] = colWidths;
+                
+                const fileName = `${state.currentClass}_点名数据_${formatExportDate()}.xlsx`;
+                XLSX.writeFile(wb, fileName);
+                showStatus('数据导出成功', 'success');
+                
+            } catch (error) {
+                console.error('导出数据失败:', error);
+                showStatus('导出失败: ' + error.message, 'error');
+            }
+        }
+        
+        function formatExportDate() {
+            const now = new Date();
+            return `${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+        }
+        
+        function showScoreSummary() {
+            const modal = elements.scoreSummaryModal;
+            const content = elements.scoreSummaryContent;
+            
+            if (state.scoreRecords.length === 0) {
+                content.innerHTML = '<div class="no-records">暂无加减分记录</div>';
+            } else {
+                const studentScores = {};
+                state.scoreRecords.forEach(record => {
+                    if (!studentScores[record.studentId]) {
+                        studentScores[record.studentId] = {
+                            name: record.studentName,
+                            total: 0,
+                            records: []
+                        };
+                    }
+                    studentScores[record.studentId].total += record.points;
+                    studentScores[record.studentId].records.push(record);
+                });
+                
+                const sortedStudents = Object.values(studentScores).sort((a, b) => b.total - a.total);
+                let html = `
+                    <table class="score-summary-table">
+                        <thead>
+                            <tr>
+                                <th>学生姓名</th>
+                                <th>总分数</th>
+                                <th>加分次数</th>
+                                <th>减分次数</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                `;
+                
+                sortedStudents.forEach(student => {
+                    const addCount = student.records.filter(r => r.points > 0).length;
+                    const removeCount = student.records.filter(r => r.points < 0).length;
+                    
+                    html += `
+                        <tr>
+                            <td>${student.name}</td>
+                            <td class="total-points ${student.total < 0 ? 'negative' : ''}">${student.total > 0 ? '+' : ''}${student.total}</td>
+                            <td style="color: ${addCount > 0 ? 'var(--success-color)' : '#ccc'}">${addCount}次</td>
+                            <td style="color: ${removeCount > 0 ? 'var(--danger-color)' : '#ccc'}">${removeCount}次</td>
+                        </tr>
+                    `;
+                });
+                
+                html += `
+                        </tbody>
+                    </table>
+                    <div style="margin-top: 15px; text-align: center; color: #ccc;">
+                        共 ${state.scoreRecords.length} 条加减分记录
+                    </div>
+                `;
+                
+                content.innerHTML = html;
+            }
+            
+            modal.classList.add('show');
+        }
+        
+        function closeScoreSummary() {
+            elements.scoreSummaryModal.classList.remove('show');
+        }
+        
+        function toggleFullscreen() {
+            const docEl = document.documentElement;
+            const isFullscreen = !!(document.fullscreenElement || 
+                                   document.webkitFullscreenElement || 
+                                   document.mozFullScreenElement || 
+                                   document.msFullscreenElement);
+
+            if (!isFullscreen) {
+                const requestMethods = [
+                    docEl.requestFullscreen,
+                    docEl.webkitRequestFullscreen,
+                    docEl.mozRequestFullScreen,
+                    docEl.msRequestFullscreen
+                ];
+
+                let success = false;
+                for (const method of requestMethods) {
+                    if (method) {
+                        try {
+                            method.call(docEl);
+                            success = true;
+                            break;
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                }
+
+                if (success) {
+                    elements.fullscreenIndicator.classList.add('show');
+                    showStatus('已进入全屏模式', 'info');
+                } else {
+                    showStatus('全屏请求失败', 'error');
+                }
+            } else {
+                const exitMethods = [
+                    document.exitFullscreen,
+                    document.webkitExitFullscreen,
+                    document.mozCancelFullScreen,
+                    document.msExitFullscreen
+                ];
+
+                let success = false;
+                for (const method of exitMethods) {
+                    if (method) {
+                        try {
+                            method.call(document);
+                            success = true;
+                            break;
+                        } catch (e) {
+                            continue;
+                        }
+                    }
+                }
+
+                if (success) {
+                    elements.fullscreenIndicator.classList.remove('show');
+                    showStatus('已退出全屏模式', 'info');
+                } else {
+                    showStatus('退出全屏失败', 'error');
+                }
+            }
+        }
+        
+        function toggleSidebar() {
+            elements.sidebar.classList.toggle('hidden');
+            if (window.innerWidth <= 768) {
+                elements.toggleSidebarBtn.classList.toggle('visible', elements.sidebar.classList.contains('hidden'));
+            }
+        }
+        
+        function togglePerformanceMode() {
+            state.performanceMode = state.performanceMode === 'high' ? 'low' : 'high';
+            elements.performanceMode.textContent = `性能模式: ${state.performanceMode === 'high' ? '高品质' : '高性能'}`;
+            showStatus(`已切换到${state.performanceMode === 'high' ? '高品质' : '高性能'}模式`, 'info');
+            applyPerformanceSettings();
+            updateScenePerformance();
+        }
+        
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            elements.fileName.textContent = file.name;
+            showStatus(`正在解析 ${file.name}...`);
+            
+            const reader = new FileReader();
+            
+            if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                reader.onload = function(e) {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        let className = extractClassName(file.name);
+                        if (workbook.SheetNames.length > 0) {
+                            const firstSheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[firstSheetName];
+                            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                            if (jsonData.length > 0 && jsonData[0].班级) {
+                                className = jsonData[0].班级;
+                            }
+                            parseStudentData(jsonData, className);
+                        }
+                    } catch (error) {
+                        showStatus("解析Excel文件失败", 'error');
+                        console.error(error);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else if (file.name.endsWith('.csv')) {
+                reader.onload = function(e) {
+                    try {
+                        const results = Papa.parse(e.target.result, { header: true });
+                        const className = extractClassName(file.name);
+                        parseStudentData(results.data, className);
+                    } catch (error) {
+                        showStatus("解析CSV文件失败", 'error');
+                        console.error(error);
+                    }
+                };
+                reader.readAsText(file);
+            } else if (file.name.endsWith('.doc') || file.name.endsWith('.docx')) {
+                reader.onload = function(e) {
+                    try {
+                        mammoth.extractRawText({ arrayBuffer: e.target.result })
+                            .then(function(result) {
+                                const text = result.value;
+                                const lines = text.split('\n').map(line => line.trim()).filter(line => line);
+                                const jsonData = lines.map((name, index) => ({
+                                    姓名: name,
+                                    积分: 0,
+                                    出勤次数: 0
+                                }));
+                                const className = extractClassName(file.name);
+                                parseStudentData(jsonData, className);
+                            })
+                            .catch(error => {
+                                showStatus("解析Word文件失败", 'error');
+                                console.error(error);
+                            });
+                    } catch (error) {
+                        showStatus("解析Word文件失败", 'error');
+                        console.error(error);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            } else if (file.name.endsWith('.txt')) {
+                reader.onload = function(e) {
+                    try {
+                        const lines = e.target.result.split('\n')
+                            .map(line => line.trim())
+                            .filter(line => line);
+                        
+                        const jsonData = lines.map((line, index) => {
+                            const parts = line.split(',').map(p => p.trim());
+                            return {
+                                姓名: parts[0],
+                                积分: parts[1] ? parseInt(parts[1]) : 0,
+                                出勤次数: 0
+                            };
+                        });
+                        
+                        const className = extractClassName(file.name);
+                        parseStudentData(jsonData, className);
+                    } catch (error) {
+                        showStatus("解析文本文件失败", 'error');
+                        console.error(error);
+                    }
+                };
+                reader.readAsText(file);
+            } else {
+                showStatus("不支持的文件格式", 'error');
+            }
+        }
+        
+        function extractClassName(filename) {
+            const patterns = [
+                /(\S+班)/,
+                /(\S+级\S+班)/,
+                /(\S+专业\S+班)/
+            ];
+            
+            for (const pattern of patterns) {
+                const match = filename.match(pattern);
+                if (match) {
+                    return match[1];
+                }
+            }
+            return elements.classSelect.options[elements.classSelect.selectedIndex].text;
+        }
+        
+        function parseStudentData(jsonData, className = null) {
+            if (!jsonData || jsonData.length === 0) {
+                showStatus("未解析到学生数据", 'warning');
+                return;
+            }
+            
+            const nameFields = ['姓名', 'name', '学生姓名', '学员姓名', '学生', '学员'];
+            const scoreFields = ['积分', 'score', '分数', '成绩', '学分'];
+            const attendanceFields = ['出勤次数', 'attendance', '出勤', '到课次数'];
+            
+            let nameField = null;
+            let scoreField = null;
+            let attendanceField = null;
+            
+            const firstItem = jsonData[0];
+            for (const key in firstItem) {
+                const keyLower = key.toLowerCase();
+                if (!nameField && nameFields.some(f => keyLower.includes(f.toLowerCase()))) {
+                    nameField = key;
+                }
+                if (!scoreField && scoreFields.some(f => keyLower.includes(f.toLowerCase()))) {
+                    scoreField = key;
+                }
+                if (!attendanceField && attendanceFields.some(f => keyLower.includes(f.toLowerCase()))) {
+                    attendanceField = key;
+                }
+            }
+            
+            if (!nameField) {
+                nameField = Object.keys(firstItem)[0];
+            }
+            
+            const newStudents = jsonData.map((item, index) => ({
+                id: index + 1,
+                name: item[nameField] || `学生${index + 1}`,
+                score: scoreField ? parseInt(item[scoreField]) || 0 : 0,
+                attendance: attendanceField ? parseInt(item[attendanceField]) || 0 : 0,
+                called: false
+            })).filter(student => student.name.trim() !== '');
+            
+            if (newStudents.length === 0) {
+                showStatus("未解析到有效学生数据", 'warning');
+                return;
+            }
+            
+            newStudents.sort((a, b) => b.score - a.score);
+            state.classData[state.currentClassKey] = newStudents;
+            state.students = [...newStudents];
+            
+            if (className) {
+                let classExists = false;
+                for (let i = 0; i < elements.classSelect.options.length; i++) {
+                    if (elements.classSelect.options[i].text === className) {
+                        elements.classSelect.selectedIndex = i;
+                        state.currentClass = elements.classSelect.options[i].text;
+                        state.currentClassKey = elements.classSelect.value;
+                        elements.currentClass.textContent = className;
+                        classExists = true;
+                        break;
+                    }
+                }
+                
+                if (!classExists) {
+                    const newClassValue = `class${elements.classSelect.options.length + 1}`;
+                    const newOption = document.createElement('option');
+                    newOption.value = newClassValue;
+                    newOption.textContent = className;
+                    elements.classSelect.appendChild(newOption);
+                    elements.classSelect.selectedIndex = elements.classSelect.options.length - 1;
+                    state.currentClass = className;
+                    state.currentClassKey = newClassValue;
+                    elements.currentClass.textContent = className;
+                    state.classData[newClassValue] = newStudents;
+                }
+            }
+            
+            renderStudentList();
+            updateCallStatus();
+            
+            if (state.sceneLoaded) {
+                clearCards();
+                createStudentCards();
+            }
+            
+            showStatus(`成功导入 ${newStudents.length} 名学生`, 'success');
+        }
+        
+        function initThreeScene() {
+            try {
+                if (typeof THREE === 'undefined') {
+                    throw new Error('Three.js库未加载，请检查网络连接');
+                }
+                
+                updateLoadingStatus(10, '正在初始化...', '检测浏览器环境');
+                
+                state.performanceMode = detectPerformance();
+                elements.performanceMode.textContent = `性能模式: ${state.performanceMode === 'low' ? '节能' : '高品质'}`;
+                applyPerformanceSettings();
+                
+                updateLoadingStatus(20, '正在初始化...', '检查WebGL支持');
+                
+                function checkWebGLSupport() {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        return !!(window.WebGLRenderingContext && 
+                               (canvas.getContext('webgl') || 
+                                canvas.getContext('experimental-webgl')));
+                    } catch(e) {
+                        return false;
+                    }
+                }
+                
+                const webglSupported = checkWebGLSupport();
+                if (!webglSupported) {
+                    updateLoadingStatus(0, '您的浏览器不支持WebGL', '将使用基础模式运行');
+                    console.warn('WebGL is not supported by this browser');
+                    
+                    setTimeout(() => {
+                        elements.loadingIndicator.style.display = 'none';
+                        elements.threeContainer.innerHTML = 
+                            '<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;color:#6a8cff;">' +
+                            '您的浏览器不支持3D效果，基础功能仍可使用</div>';
+                        initSampleStudents();
+                    }, 2000);
+                    return;
+                }
+                
+                updateLoadingStatus(30, '正在准备3D环境...', '初始化Three.js');
+                
+                state.scene = new THREE.Scene();
+                state.scene.background = new THREE.Color(0x000000);
+                
+                const containerWidth = elements.threeContainer.clientWidth;
+                const containerHeight = elements.threeContainer.clientHeight;
+                
+                updateLoadingStatus(40, '正在创建3D场景...', '初始化场景对象');
+                
+                state.camera = new THREE.PerspectiveCamera(75, containerWidth / containerHeight, 0.1, 1000);
+                state.camera.position.z = 40;
+                
+                updateLoadingStatus(50, '正在创建3D场景...', '初始化渲染器');
+                
+                state.renderer = new THREE.WebGLRenderer({ 
+                    canvas: document.getElementById('canvas'),
+                    antialias: state.performanceMode !== 'low',
+                    alpha: true,
+                    powerPreference: state.performanceMode === 'low' ? 'low-power' : 'high-performance'
+                });
+                state.renderer.setSize(containerWidth, containerHeight);
+                state.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                state.renderer.shadowMap.enabled = performanceConfig.enableShadows;
+                
+                if (state.performanceMode === 'low') {
+                    state.renderer.shadowMap.type = THREE.BasicShadowMap;
+                } else {
+                    state.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+                }
+                
+                elements.threeContainer.appendChild(state.renderer.domElement);
+                
+                updateLoadingStatus(60, '正在创建3D场景...', '设置控制器');
+                
+                state.controls = new THREE.OrbitControls(state.camera, state.renderer.domElement);
+                state.controls.enableDamping = state.performanceMode !== 'low';
+                state.controls.dampingFactor = 0.05;
+                state.controls.autoRotate = true;
+                state.controls.autoRotateSpeed = 0.5;
+                
+                updateLoadingStatus(70, '正在创建3D场景...', '创建球体和光源');
+                
+                const sphereGeometry = new THREE.SphereGeometry(24, 32, 32);
+                const sphereMaterial = new THREE.MeshBasicMaterial({
+                    color: 0x0066ff,
+                    wireframe: true,
+                    transparent: true,
+                    opacity: 0.2
+                });
+                state.sphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+                state.scene.add(state.sphere);
+                
+                const ambientLight = new THREE.AmbientLight(0x222244, 1);
+                state.scene.add(ambientLight);
+                
+                const directionalLight1 = new THREE.DirectionalLight(0x6a8cff, 1);
+                directionalLight1.position.set(5, 5, 10);
+                directionalLight1.castShadow = performanceConfig.enableShadows;
+                
+                if (performanceConfig.enableShadows) {
+                    directionalLight1.shadow.mapSize.width = state.performanceMode === 'low' ? 512 : 1024;
+                    directionalLight1.shadow.mapSize.height = state.performanceMode === 'low' ? 512 : 1024;
+                    directionalLight1.shadow.camera.near = 0.5;
+                    directionalLight1.shadow.camera.far = 500;
+                }
+                
+                state.scene.add(directionalLight1);
+                
+                const directionalLight2 = new THREE.DirectionalLight(0xff7eb9, 0.7);
+                directionalLight2.position.set(-5, -5, -10);
+                state.scene.add(directionalLight2);
+                
+                updateLoadingStatus(80, '正在创建3D场景...', '生成星空背景');
+                
+                createStars();
+                
+                state.cardGroup = new THREE.Group();
+                state.scene.add(state.cardGroup);
+                
+                updateLoadingStatus(90, '正在创建3D场景...', '设置事件监听');
+                
+                window.addEventListener('resize', onWindowResize);
+                const raycaster = new THREE.Raycaster();
+                const mouse = new THREE.Vector2();
+                
+                function onMouseClick(event) {
+                    if (elements.resultCard.contains(event.target)) {
+                        return;
+                    }
+                    
+                    mouse.x = (event.clientX / state.renderer.domElement.clientWidth) * 2 - 1;
+                    mouse.y = -(event.clientY / state.renderer.domElement.clientHeight) * 2 + 1;
+
+                    raycaster.setFromCamera(mouse, state.camera);
+                    const intersects = raycaster.intersectObjects(state.cardGroup.children);
+
+                    if (intersects.length > 0) {
+                        const selectedObject = intersects[0].object;
+                        highlightCard(selectedObject);
+                    } else {
+                        if (state.isRolling) {
+                            stopRollCall();
+                        } else {
+                            startRollCall();
+                        }
+                    }
+                }
+                
+                elements.resultCard.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                });
+
+                state.renderer.domElement.addEventListener('click', onMouseClick);
+                animate();
+                state.sceneLoaded = true;
+                hideError();
+                updateLoadingStatus(100, '加载完成', '准备就绪');
+                
+            } catch (error) {
+                console.error('Three.js初始化错误:', error);
+                state.sceneLoaded = false;
+                showError('星空场景加载失败', error.message);
+                if (state.loadAttempts < state.maxLoadAttempts) {
+                    state.loadAttempts++;
+                    elements.errorDetails.textContent += `（将在3秒后尝试第${state.loadAttempts + 1}次加载）`;
+                    
+                    setTimeout(() => {
+                        hideError();
+                        initThreeScene();
+                    }, 3000);
+                }
+            }
+        }
+        
+        function createStars() {
+            state.stars.forEach(star => {
+                state.scene.remove(star);
+            });
+            state.stars = [];
+            
+            const starGeometry = new THREE.BufferGeometry();
+            const starCount = performanceConfig.starCount;
+            const positions = new Float32Array(starCount * 3);
+            const colors = new Float32Array(starCount * 3);
+            const sizes = new Float32Array(starCount);
+            
+            for (let i = 0; i < starCount; i++) {
+                const i3 = i * 3;
+                positions[i3] = (Math.random() - 0.5) * 2000;
+                positions[i3 + 1] = (Math.random() - 0.5) * 2000;
+                positions[i3 + 2] = (Math.random() - 0.5) * 2000;
+                
+                colors[i3] = Math.random() * 0.5 + 0.5;
+                colors[i3 + 1] = Math.random() * 0.5 + 0.5;
+                colors[i3 + 2] = Math.random() * 0.5 + 0.5;
+                
+                sizes[i] = Math.random() * 3 + 1;
+            }
+            
+            starGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            starGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+            
+            const starMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    pointTexture: { 
+                        value: (function() {
+                            const canvas = document.createElement('canvas');
+                            canvas.width = 64;
+                            canvas.height = 64;
+                            const context = canvas.getContext('2d');
+                            
+                            const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
+                            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+                            gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
+                            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+                            
+                            context.fillStyle = gradient;
+                            context.fillRect(0, 0, 64, 64);
+                            
+                            const texture = new THREE.Texture(canvas);
+                            texture.needsUpdate = true;
+                            return texture;
+                        })()
+                    }
+                },
+                vertexShader: `
+                    attribute float size;
+                    attribute vec3 color;
+                    varying vec3 vColor;
+                    void main() {
+                        vColor = color;
+                        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+                        gl_PointSize = size * (300.0 / -mvPosition.z);
+                        gl_Position = projectionMatrix * mvPosition;
+                    }
+                `,
+                fragmentShader: `
+                    uniform sampler2D pointTexture;
+                    varying vec3 vColor;
+                    void main() {
+                        gl_FragColor = vec4(vColor, 1.0) * texture2D(pointTexture, gl_PointCoord);
+                        if (gl_FragColor.a < 0.1) discard;
+                    }
+                `,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                transparent: true
+            });
+            
+            const starField = new THREE.Points(starGeometry, starMaterial);
+            state.scene.add(starField);
+            state.stars.push(starField);
+        }
+        
+        function createStudentCards() {
+            clearCards();
+            if (state.students.length === 0) return;
+            
+            const cardMaterial = new THREE.ShaderMaterial({
+                uniforms: {
+                    color1: { value: new THREE.Color(0x1a1c35) },
+                    color2: { value: new THREE.Color(0x2d305e) },
+                    selected: { value: 0 }
+                },
+                vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+                    }
+                `,
+                fragmentShader: `
+                    uniform vec3 color1;
+                    uniform vec3 color2;
+                    uniform float selected;
+                    varying vec2 vUv;
+                    void main() {
+                        vec3 color = mix(color1, color2, vUv.y);
+                        if (selected > 0.5) {
+                            color = mix(color, vec3(0.415, 0.55, 1.0), 0.3);
+                        }
+                        gl_FragColor = vec4(color, 0.9);
+                }
+                `,
+                side: THREE.DoubleSide,
+                transparent: true
+            });
+            
+            state.students.forEach((student, index) => {
+                const sphereRadius = 21.5;
+                const goldenRatio = (1 + Math.sqrt(5)) / 2;
+                const y = 1 - (index / (state.students.length - 1)) * 2;
+                const radius = Math.sqrt(1 - y * y);
+                const theta = 2 * Math.PI * index / goldenRatio;
+                
+                const x = Math.cos(theta) * radius * sphereRadius;
+                const z = Math.sin(theta) * radius * sphereRadius;
+                const finalY = y * sphereRadius;
+                
+                const targetX = x;
+                const targetY = finalY;
+                const targetZ = z;
+                
+                const cardGeometry = new THREE.PlaneGeometry(
+                    state.performanceMode === 'low' ? 8 : 10 * 0.67, 
+                    state.performanceMode === 'low' ? 5 : 7 * 0.67
+                );
+                
+                const baseScale = 0.8 + Math.random() * 0.4;
+                const card = new THREE.Mesh(cardGeometry, cardMaterial);
+                card.position.set(targetX, targetY, targetZ);
+                card.lookAt(state.camera.position);
+                card.scale.set(baseScale, baseScale, baseScale);
+                card.castShadow = performanceConfig.enableShadows;
+                card.receiveShadow = performanceConfig.enableShadows;
+                
+                card.userData = {
+                    studentId: student.id,
+                    targetPosition: new THREE.Vector3(targetX, targetY, targetZ),
+                    spherePosition: new THREE.Vector3(targetX, targetY, targetZ),
+                    isSelected: false,
+                    入场动画进度: 0,
+                    baseScale: baseScale,
+                    floatOffset: Math.random() * Math.PI * 2,
+                    floatSpeed: 0.005 + Math.random() * 0.005,
+                    rotationSpeed: (Math.random() - 0.5) * 0.01
+                };
+                
+                createNameTexture(card, student.name, student.score);
+                state.cardGroup.add(card);
+                state.cards.push(card);
+            });
+            
+            state.isAnimatingCards = true;
+            state.cardAnimationProgress = 0;
+        }
+        
+        function createNameTexture(card, name, score) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = state.performanceMode === 'low' ? 256 : 512;
+            canvas.height = state.performanceMode === 'low' ? 128 : 256;
+            
+            const gradient = context.createLinearGradient(0, 0, canvas.width, canvas.height);
+            gradient.addColorStop(0, 'rgba(26, 28, 53, 0.5)');
+            gradient.addColorStop(1, 'rgba(45, 48, 94, 0.5)');
+            context.fillStyle = gradient;
+            context.fillRect(0, 0, canvas.width, canvas.height);
+            
+            const nameFontSize = state.performanceMode === 'low' ? 18 : 36;
+            context.font = `bold ${nameFontSize}px Arial, sans-serif`;
+            
+            const textGradient = context.createLinearGradient(0, 0, canvas.width, 0);
+            textGradient.addColorStop(0, '#6a8cff');
+            textGradient.addColorStop(1, '#ff7eb9');
+            context.fillStyle = textGradient;
+            
+            context.textAlign = 'center';
+            context.textBaseline = 'middle';
+            context.fillText(name, canvas.width / 2, canvas.height / 2 - (state.performanceMode === 'low' ? 10 : 20));
+            
+            const scoreFontSize = state.performanceMode === 'low' ? 12 : 24;
+            context.font = `bold ${scoreFontSize}px Arial, sans-serif`;
+            
+            let scoreGradient;
+            if (score < 0) {
+                // 负分显示红色
+                scoreGradient = context.createLinearGradient(0, 0, canvas.width, 0);
+                scoreGradient.addColorStop(0, '#ff6b6b');
+                scoreGradient.addColorStop(1, '#ff922b');
+            } else if (score === 0) {
+                // 零分显示灰色
+                scoreGradient = context.createLinearGradient(0, 0, canvas.width, 0);
+                scoreGradient.addColorStop(0, '#cccccc');
+                scoreGradient.addColorStop(1, '#999999');
+            } else {
+                // 正分显示绿色
+                scoreGradient = context.createLinearGradient(0, 0, canvas.width, 0);
+                scoreGradient.addColorStop(0, '#51cf66');
+                scoreGradient.addColorStop(1, '#7fffcb');
+            }
+            context.fillStyle = scoreGradient;
+            
+            context.fillText(`积分: ${score}`, canvas.width / 2, canvas.height / 2 + (state.performanceMode === 'low' ? 30 : 60));
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                side: THREE.DoubleSide,
+                transparent: true
+            });
+            
+            const textPlane = new THREE.PlaneGeometry(
+                state.performanceMode === 'low' ? 7 : 9,
+                state.performanceMode === 'low' ? 4 : 5
+            );
+            const textMesh = new THREE.Mesh(textPlane, material);
+            textMesh.position.z = 0.01;
+            card.add(textMesh);
+        }
+        
+        function clearCards() {
+            if (state.scene && state.cardGroup) {
+                state.cards.forEach(card => {
+                    state.cardGroup.remove(card);
+                });
+            }
+            state.cards = [];
+        }
+        
+        function updateCardScore(studentId, score) {
+            const card = state.cards.find(c => c.userData.studentId === studentId);
+            if (card) {
+                for (let i = card.children.length - 1; i >= 0; i--) {
+                    const child = card.children[i];
+                    if (child instanceof THREE.Mesh && child.material && child.material.map) {
+                        card.remove(child);
+                    }
+                }
+                
+                const student = state.students.find(s => s.id === studentId);
+                if (student) {
+                    createNameTexture(card, student.name, score);
+                }
+            }
+        }
+        
+        function highlightCard(card) {
+            if (state.selectedCard) {
+                if (state.selectedCard.material && state.selectedCard.material.uniforms) {
+                    state.selectedCard.material.uniforms.selected.value = state.selectedCard.userData.isSelected ? 1 : 0;
+                }
+                state.selectedCard.scale.set(
+                    state.selectedCard.userData.baseScale, 
+                    state.selectedCard.userData.baseScale, 
+                    state.selectedCard.userData.baseScale
+                );
+                state.selectedCard = null;
+            }
+            
+            state.selectedCard = card;
+            if (state.selectedCard.material && state.selectedCard.material.uniforms) {
+                state.selectedCard.material.uniforms.selected.value = 1;
+            }
+            state.selectedCard.scale.set(
+                state.selectedCard.userData.baseScale * 0.65, 
+                state.selectedCard.userData.baseScale * 0.65, 
+                state.selectedCard.userData.baseScale * 0.65
+            );
+            state.selectedCard.userData.originalPosition = card.position.clone();
+            
+            const student = state.students.find(s => s.id === card.userData.studentId);
+            if (student) {
+                showStatus(`选中: ${student.name} (积分: ${student.score})`, 'info');
+            }
+        }
+        
+        function onWindowResize() {
+            const containerWidth = elements.threeContainer.clientWidth;
+            const containerHeight = elements.threeContainer.clientHeight;
+            
+            if (state.camera) {
+                state.camera.aspect = containerWidth / containerHeight;
+                state.camera.updateProjectionMatrix();
+            }
+            
+            if (state.renderer) {
+                state.renderer.setSize(containerWidth, containerHeight);
+            }
+        }
+        
+        function animate() {
+            state.animationId = requestAnimationFrame(animate);
+            
+            if (state.controls) state.controls.update();
+
+            if (state.isRolling) {
+                state.cardGroup.rotation.y += state.currentRotationSpeed.y;
+                state.cardGroup.rotation.x += state.currentRotationSpeed.x * 0.5;
+                state.sphere.rotation.y += state.currentRotationSpeed.y;
+                state.sphere.rotation.x += state.currentRotationSpeed.x * 0.5;
+            }
+
+            if (state.isAnimatingCards && state.cardAnimationProgress < 1) {
+                state.cardAnimationProgress += state.performanceMode === 'low' ? 0.01 : 0.02;
+                const easeProgress = easeOutCubic(state.cardAnimationProgress);
+                
+                state.cards.forEach(card => {
+                    card.userData.入场动画进度 = easeProgress;
+                    const startPos = new THREE.Vector3(
+                        card.position.x, 
+                        card.position.y, 
+                        card.position.z
+                    );
+                    const targetPos = card.userData.targetPosition;
+                    card.position.lerpVectors(startPos, targetPos, easeProgress);
+                    card.lookAt(state.camera.position);
+                    
+                    const scale = THREE.MathUtils.lerp(0.05, 0.5, easeProgress) * card.userData.baseScale;
+                    card.scale.set(scale, scale, scale);
+                });
+                
+                if (state.cardAnimationProgress >= 1) {
+                    state.isAnimatingCards = false;
+                }
+            } else if (!state.isAnimatingCards && !state.isRolling) {
+                const time = Date.now() * 0.001;
+                state.cards.forEach(card => {
+                    const floatX = Math.sin(time * card.userData.floatSpeed + card.userData.floatOffset) * 0.5;
+                    const floatY = Math.cos(time * card.userData.floatSpeed * 1.3 + card.userData.floatOffset) * 0.5;
+                    const floatZ = Math.sin(time * card.userData.floatSpeed * 0.7 + card.userData.floatOffset) * 0.3;
+                    
+                    card.position.x = card.userData.targetPosition.x + floatX;
+                    card.position.y = card.userData.targetPosition.y + floatY;
+                    card.position.z = card.userData.targetPosition.z + floatZ;
+                    
+                    card.rotation.z += card.userData.rotationSpeed;
+                    card.lookAt(state.camera.position);
+                    card.rotation.z += Math.sin(time * 0.002 + card.userData.floatOffset) * 0.1;
+                });
+            }
+            
+            if (state.isAnimatingSphere) {
+                state.sphereAnimationProgress += state.performanceMode === 'low' ? 0.02 : 0.04;
+                const easeProgress = easeOutCubic(state.sphereAnimationProgress);
+                
+                state.cards.forEach(card => {
+                    if (state.isRolling) {
+                        card.position.lerpVectors(
+                            card.userData.targetPosition, 
+                            card.userData.spherePosition, 
+                            easeProgress
+                        );
+                    } else {
+                        card.position.lerpVectors(
+                            card.userData.spherePosition, 
+                            card.userData.targetPosition, 
+                            easeProgress
+                        );
+                    }
+                    
+                    const lookAtPos = state.isRolling ? new THREE.Vector3(0, 0, 0) : state.camera.position;
+                    card.lookAt(lookAtPos);
+                    
+                    card.scale.set(
+                        card.userData.baseScale, 
+                        card.userData.baseScale, 
+                        card.userData.baseScale
+                    );
+                });
+                
+                if (state.sphereAnimationProgress >= 1) {
+                    state.isAnimatingSphere = false;
+                    state.sphereAnimationProgress = 0;
+                }
+            }
+            
+            if (state.isRolling) {
+                state.cardGroup.rotation.y += state.currentRotationSpeed.y;
+                state.cardGroup.rotation.x += state.currentRotationSpeed.x;
+            }
+            
+            if (state.selectedCard) {
+                const bounce = Math.sin(Date.now() * 0.005) * 0.05;
+                state.selectedCard.position.y = state.selectedCard.userData.originalPosition.y + bounce;
+            }
+            
+            if (state.scene && state.camera) {
+                state.renderer.render(state.scene, state.camera);
+            }
+        }
+        
+        function easeOutCubic(t) {
+            return 1 - Math.pow(1 - t, 3);
+        }
+        
+        function setupEventListeners() {
+            elements.startRollBtn.addEventListener('click', startRollCall);
+            elements.stopRollBtn.addEventListener('click', stopRollCall);
+            elements.closeResult.addEventListener('click', () => {
+                elements.resultCard.classList.remove('show');
+            });
+            
+            elements.voiceToggle.addEventListener('click', () => {
+                state.voiceEnabled = !state.voiceEnabled;
+                elements.voiceToggle.classList.toggle('active', state.voiceEnabled);
+                showStatus(state.voiceEnabled ? '语音播报已开启' : '语音播报已关闭', 'info');
+            });
+            
+            elements.dropdownToggle.addEventListener('click', () => {
+                elements.multiSelectDropdown.classList.toggle('show');
+            });
+            
+            document.addEventListener('click', (e) => {
+                if (!elements.dropdownToggle.contains(e.target) && 
+                    !elements.multiSelectDropdown.contains(e.target)) {
+                    elements.multiSelectDropdown.classList.remove('show');
+                }
+            });
+            
+            elements.multiSelectDropdown.querySelectorAll('a').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const number = parseInt(e.target.dataset.number);
+                    state.selectedNumber = number;
+                    elements.selectedNumberDisplay.textContent = `${number}人`;
+                    
+                    elements.multiSelectDropdown.querySelectorAll('a').forEach(i => i.classList.remove('selected'));
+                    e.target.classList.add('selected');
+                    
+                    elements.multiSelectDropdown.classList.remove('show');
+                    showStatus(`已设置每次点名选择${number}人`, 'info');
+                });
+            });
+            
+            elements.gestureToggle.addEventListener('click', toggleGesture);
+            
+            // 音乐控制相关事件
+            elements.musicControlBtn.addEventListener('click', toggleMusicPanel);
+            elements.musicCloseBtn.addEventListener('click', toggleMusicPanel);
+            elements.uploadMusic.addEventListener('change', handleMusicUpload);
+            elements.playMusic.addEventListener('click', playMusic);
+            elements.pauseMusic.addEventListener('click', pauseMusic);
+            
+            // 点击音乐面板外部关闭
+            document.addEventListener('click', (e) => {
+                if (state.musicPanelVisible && 
+                    !elements.musicPanel.contains(e.target) && 
+                    !elements.musicControlBtn.contains(e.target)) {
+                    toggleMusicPanel();
+                }
+            });
+            
+            elements.viewScoreSummaryBtn.addEventListener('click', showScoreSummary);
+            elements.closeScoreSummary.addEventListener('click', closeScoreSummary);
+            elements.scoreSummaryModal.addEventListener('click', (e) => {
+                if (e.target === elements.scoreSummaryModal) {
+                    closeScoreSummary();
+                }
+            });
+            
+            elements.uploadFile.addEventListener('change', handleFileUpload);
+            elements.classSelect.addEventListener('change', () => {
+                state.currentClass = elements.classSelect.options[elements.classSelect.selectedIndex].text;
+                state.currentClassKey = elements.classSelect.value;
+                elements.currentClass.textContent = state.currentClass;
+                showStatus(`已切换到${state.currentClass}`, 'info');
+                
+                state.students = [...state.classData[state.currentClassKey]];
+                state.students.sort((a, b) => b.score - a.score);
+                renderStudentList();
+                updateCallStatus();
+                
+                clearCards();
+                createStudentCards();
+            });
+            
+            // 加分按钮
+            elements.addScoreBtn.addEventListener('click', () => {
+                addScoreToSelected(1);
+            });
+            
+            // 减分按钮 (新增)
+            elements.removeScoreBtn.addEventListener('click', () => {
+                removeScoreFromSelected(1);
+            });
+            
+            elements.resetScoreBtn.addEventListener('click', resetScores);
+            elements.resetCallBtn.addEventListener('click', resetCallRecords);
+            elements.exportBtn.addEventListener('click', exportData);
+            elements.fullscreenBtn.addEventListener('click', toggleFullscreen);
+            elements.toggleSidebarBtn.addEventListener('click', toggleSidebar);
+            elements.performanceMode.addEventListener('click', togglePerformanceMode);
+            
+            elements.editSave.addEventListener('click', saveStudentEdit);
+            elements.editCancel.addEventListener('click', cancelStudentEdit);
+            
+            elements.resultList.addEventListener('click', (e) => {
+                e.stopPropagation();
+                
+                if (e.target.classList.contains('add-point-btn')) {
+                    const studentId = parseInt(e.target.dataset.id);
+                    addScore(studentId, 1);
+                } else if (e.target.classList.contains('remove-point-btn')) {
+                    const studentId = parseInt(e.target.dataset.id);
+                    addScore(studentId, -1);
+                } else if (e.target.classList.contains('remove-btn')) {
+                    const studentId = parseInt(e.target.dataset.id);
+                    removeStudentFromResults(studentId);
+                }
+            });
+            
+            elements.groupAddPointBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                addScoreToAllSelectedInResult(1);
+            });
+            
+            // 为所有选中学生减分按钮 (新增)
+            elements.groupRemovePointBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeScoreFromAllSelectedInResult(1);
+            });
+            
+            elements.studentList.addEventListener('dblclick', (e) => {
+                const studentItem = e.target.closest('.student-item');
+                if (studentItem) {
+                    const checkbox = studentItem.querySelector('.checkbox');
+                    const studentId = parseInt(checkbox.dataset.id);
+                    openEditStudentModal(studentId);
+                }
+            });
+            
+            elements.errorRetry.addEventListener('click', () => {
+                hideError();
+                elements.loadingIndicator.style.display = 'block';
+                elements.loadingIndicator.style.opacity = '1';
+                elements.loadingBar.style.width = '0%';
+                initThreeScene();
+            });
+            
+            window.addEventListener('resize', () => {
+                if (window.innerWidth > 768) {
+                    elements.sidebar.classList.remove('hidden');
+                    elements.toggleSidebarBtn.classList.remove('visible');
+                } else {
+                    elements.toggleSidebarBtn.classList.toggle('visible', elements.sidebar.classList.contains('hidden'));
+                }
+                
+                if (state.renderer) {
+                    onWindowResize();
+                }
+            });
+
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space') {
+                    e.preventDefault();
+                    if (state.isRolling) {
+                        stopRollCall();
+                    } else {
+                        startRollCall();
+                    }
+                } else if (e.code === 'Equal' && e.shiftKey) { // + 键
+                    e.preventDefault();
+                    addScoreToSelected(1);
+                } else if (e.code === 'Minus') { // - 键
+                    e.preventDefault();
+                    removeScoreFromSelected(1);
+                }
+            });
+        }
+        
+        function openEditStudentModal(studentId) {
+            const student = state.students.find(s => s.id === studentId);
+            if (student) {
+                elements.editStudentId.value = student.id;
+                elements.editStudentName.value = student.name;
+                elements.editStudentScore.value = student.score;
+                elements.editModal.classList.add('show');
+            }
+        }
+
+        function saveStudentEdit() {
+            const studentId = parseInt(elements.editStudentId.value);
+            const student = state.students.find(s => s.id === studentId);
+            
+            if (student) {
+                student.name = elements.editStudentName.value.trim();
+                student.score = parseFloat(elements.editStudentScore.value) || 0;
+                
+                renderStudentList();
+                renderResults();
+                updateCard(studentId, student.name, student.score);
+                showStatus('学生信息已更新', 'success');
+            }
+            
+            elements.editModal.classList.remove('show');
+        }
+
+        function cancelStudentEdit() {
+            elements.editModal.classList.remove('show');
+        }
+        
+        function showError(message, details = '') {
+            elements.errorDetails.textContent = details || message;
+            elements.errorMessage.classList.add('show');
+            console.error('Error:', message, details);
+        }
+
+        function hideError() {
+            elements.errorMessage.classList.remove('show');
+        }
+        
+        function initApp() {
+            setupEventListeners();
+            initThreeScene();
+            initGestureRecognition();
+            initSampleStudents();
+            elements.multiSelectDropdown.querySelector(`a[data-number="${state.selectedNumber}"]`).classList.add('selected');
+            
+            if (window.innerWidth <= 768) {
+                elements.sidebar.classList.add('hidden');
+                elements.toggleSidebarBtn.classList.add('visible');
+            }
+        }
+        
+        window.addEventListener('load', initApp);
+    </script>
+</body>
+</html>
